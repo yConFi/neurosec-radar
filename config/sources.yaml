@@ -1,0 +1,52 @@
+# NeuroSec Radar · sources
+# Every URL below was checked on 2026-09-23 (HTTP 200 + parseable items).
+# kind: rss | arxiv | cisa_kev | nvd
+# category_hint is only a hint for the AI; it decides the final category.
+# Discarded during verification: CISA advisories RSS (403 to bots), MSRC blog
+# (no RSS), Anthropic news (no official RSS), HiddenLayer & Lakera (404).
+
+sources:
+  # ---------------------------------------------------------------- cyber · EN
+  - {id: thehackernews,     name: The Hacker News,        kind: rss, lang: en, category_hint: cyber, url: "https://feeds.feedburner.com/TheHackersNews"}
+  - {id: bleepingcomputer,  name: BleepingComputer,       kind: rss, lang: en, category_hint: cyber, url: "https://www.bleepingcomputer.com/feed/"}
+  - {id: krebsonsecurity,   name: Krebs on Security,      kind: rss, lang: en, category_hint: cyber, url: "https://krebsonsecurity.com/feed/"}
+  - {id: darkreading,       name: Dark Reading,           kind: rss, lang: en, category_hint: cyber, url: "https://www.darkreading.com/rss.xml"}
+  - {id: securityweek,      name: SecurityWeek,           kind: rss, lang: en, category_hint: cyber, url: "https://www.securityweek.com/feed/"}
+  - {id: therecord,         name: The Record,             kind: rss, lang: en, category_hint: cyber, url: "https://therecord.media/feed"}
+  - {id: schneier,          name: Schneier on Security,   kind: rss, lang: en, category_hint: cyber, url: "https://www.schneier.com/feed/atom/"}
+  - {id: project-zero,      name: Google Project Zero,    kind: rss, lang: en, category_hint: cyber, url: "https://googleprojectzero.blogspot.com/feeds/posts/default"}
+  - {id: google-security,   name: Google Security Blog,   kind: rss, lang: en, category_hint: cyber, url: "https://security.googleblog.com/feeds/posts/default"}
+  - {id: trailofbits,       name: Trail of Bits,          kind: rss, lang: en, category_hint: cyber, url: "https://blog.trailofbits.com/feed/"}
+
+  # ---------------------------------------------------------------- cyber · ES
+  - {id: unaaldia,          name: Una al día (Hispasec),  kind: rss, lang: es, category_hint: cyber, url: "https://unaaldia.hispasec.com/feed"}
+  - {id: incibe-cert,       name: INCIBE-CERT avisos,     kind: rss, lang: es, category_hint: cyber, url: "https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed"}
+  - {id: welivesecurity-es, name: WeLiveSecurity (ES),    kind: rss, lang: es, category_hint: cyber, url: "https://www.welivesecurity.com/es/rss/feed/"}
+  - {id: segu-info,         name: Segu-Info,              kind: rss, lang: es, category_hint: cyber, url: "https://blog.segu-info.com.ar/feeds/posts/default"}
+  - {id: cybersecuritynews-es, name: Cybersecurity News (ES), kind: rss, lang: es, category_hint: cyber, url: "https://www.cybersecuritynews.es/feed/"}
+
+  # ------------------------------------------------------------------- AI · EN
+  - {id: openai,            name: OpenAI News,            kind: rss, lang: en, category_hint: ai, url: "https://openai.com/news/rss.xml"}
+  - {id: google-ai,         name: Google AI Blog,         kind: rss, lang: en, category_hint: ai, url: "https://blog.google/technology/ai/rss/"}
+  - {id: deepmind,          name: Google DeepMind,        kind: rss, lang: en, category_hint: ai, url: "https://deepmind.google/blog/rss.xml"}
+  - {id: huggingface,       name: Hugging Face Blog,      kind: rss, lang: en, category_hint: ai, url: "https://huggingface.co/blog/feed.xml"}
+  - {id: techcrunch-ai,     name: TechCrunch AI,          kind: rss, lang: en, category_hint: ai, url: "https://techcrunch.com/category/artificial-intelligence/feed/"}
+  - {id: mit-tr-ai,         name: MIT Technology Review AI, kind: rss, lang: en, category_hint: ai, url: "https://www.technologyreview.com/topic/artificial-intelligence/feed"}
+  - {id: verge-ai,          name: The Verge AI,           kind: rss, lang: en, category_hint: ai, url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"}
+  - {id: simonwillison,     name: Simon Willison,         kind: rss, lang: en, category_hint: ai, url: "https://simonwillison.net/atom/everything/"}
+
+  # ------------------------------------------------------------------- AI · ES
+  - {id: xataka-ia,         name: Xataka IA,              kind: rss, lang: es, category_hint: ai, url: "https://www.xataka.com/tag/inteligencia-artificial/rss2.xml"}
+
+  # --------------------------------------------------------------- AI × cyber
+  - {id: embracethered,     name: Embrace The Red,        kind: rss, lang: en, category_hint: ai_x_cyber, url: "https://embracethered.com/blog/index.xml"}
+  - {id: owasp-genai,       name: OWASP GenAI Security,   kind: rss, lang: en, category_hint: ai_x_cyber, url: "https://genai.owasp.org/feed/"}
+
+  # -------------------------------------------------------------------- arXiv
+  # Only "Announce Type: new" + keyword filter (see settings.yaml -> arxiv)
+  - {id: arxiv-cs-cr,       name: arXiv cs.CR,            kind: arxiv, lang: en, category_hint: ai_x_cyber, url: "https://rss.arxiv.org/rss/cs.CR"}
+  - {id: arxiv-cs-ai,       name: arXiv cs.AI,            kind: arxiv, lang: en, category_hint: ai_x_cyber, url: "https://rss.arxiv.org/rss/cs.AI"}
+
+  # ---------------------------------------------------------- vulnerability data
+  - {id: cisa-kev,          name: CISA KEV,               kind: cisa_kev, lang: en, category_hint: cyber, url: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"}
+  - {id: nvd-critical,      name: NVD (CVSS crítico),     kind: nvd, lang: en, category_hint: cyber, url: "https://services.nvd.nist.gov/rest/json/cves/2.0"}

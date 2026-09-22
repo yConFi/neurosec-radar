@@ -1,0 +1,61 @@
+# NeuroSec Radar · tunables (no secrets here — those live in env vars)
+
+collector:
+  max_age_days: 3            # skip items older than this (avoids back-filling whole archives)
+  max_items_per_source: 50   # newest N entries per feed and run
+  max_content_chars: 2500    # plain-text snippet stored and sent to the AI (~600 tokens)
+  http_timeout_s: 20
+  user_agent: "Mozilla/5.0 (compatible; neurosec-radar/0.1; +https://github.com/yConFi/neurosec-radar)"
+
+dedup:
+  window_days: 3             # compare titles against articles fetched in this window
+  title_similarity: 88       # rapidfuzz token_sort_ratio, 0-100
+  min_title_len: 25          # shorter titles are too generic to fuzzy-match safely
+
+ai:
+  model: claude-haiku-4-5
+  max_tokens: 1024
+  max_per_batch: 300         # cost guard-rail per run
+  max_attempts: 3            # after this, the article stays in status 'failed'
+
+# Highlights are NOT configured here: they are a generated column in the DB
+# (articles.highlight: importance >= 9 -> 'major', == 8 -> 'top').
+
+kev:
+  new_max_age_days: 2        # a KEV entry becomes an article if dateAdded is within N days
+
+nvd:
+  article_max_age_days: 30   # only recently *published* CVEs become articles
+  overlap_minutes: 60        # re-query a little before the last success
+  first_run_lookback_hours: 24
+  sleep_between_requests_s: 6   # public limit: 5 requests / rolling 30 s
+
+arxiv:
+  # Case-insensitive regexes. A paper passes if title+abstract matches ANY term.
+  cs.CR:   # security papers -> keep the AI-related ones
+    - '\bLLMs?\b'
+    - 'large language models?'
+    - 'language models?'
+    - 'prompt injection'
+    - 'jailbreak\w*'
+    - '\bagent(s|ic)?\b'
+    - '\bGPT\b'
+    - '\bRAG\b'
+    - 'machine learning'
+    - 'deep learning'
+    - 'neural network'
+    - 'foundation models?'
+    - '\bAI\b'
+  cs.AI:   # AI papers -> keep the security-related ones
+    - 'secur\w*'
+    - 'attack\w*'
+    - 'vulnerab\w*'
+    - 'malware'
+    - 'exploit\w*'
+    - 'jailbreak\w*'
+    - 'prompt injection'
+    - 'adversarial'
+    - 'red[- ]team\w*'
+    - 'backdoor\w*'
+    - 'poisoning'
+    - 'privacy'
