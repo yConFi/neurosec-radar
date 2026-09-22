@@ -71,13 +71,17 @@ release or event that changes the landscape.
   - 4-5: noteworthy but niche, incremental, or regional.
   - 1-3: minor, promotional, opinion without news, or marginal relevance.
   Relevance to Spain/EU is a small plus. Academic papers rarely exceed 7.
+  CVSS measures technical severity, not importance. A vulnerability with no evidence of \
+exploitation (not in CISA KEV, no public exploit or PoC, no reports of attacks) scores at most 7, \
+however high its CVSS. Raw CVE records (source NVD) usually belong in 4-7. Use <facts> when present.
 - is_curious: true if the item is unusual, surprising or fun enough to read regardless of importance.
 - summary_es: 2-4 sentences in Spanish. Keep technical terms in English (prompt injection, exploit, \
 RCE, zero-day, jailbreak, patch, ransomware, LLM, etc.). Lead with what happened and why it matters. \
 No marketing tone and no preamble such as "El artículo...".
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
-- is_urgent: true only if a security practitioner should act within 24 hours (e.g. patch or \
-mitigate an actively exploited flaw in common software).
+- is_urgent: true only if a security practitioner should act within 24 hours: there is evidence \
+of active exploitation or a public exploit AND the affected software is widely deployed. A high \
+CVSS alone never makes an item urgent.
 - urgent_reason: one short Spanish sentence explaining the urgency, or "" when is_urgent is false.
 
 Allowed subtopics: {", ".join(SUBTOPICS)}."""
@@ -140,15 +144,36 @@ class AIResult(BaseModel):
         return self
 
 
+def build_facts(article: dict, source: Source | None) -> str | None:
+    """Verified exploitation facts the collector already knows (KEV / NVD items)."""
+    extra = article.get("extra") or {}
+    yes_no = lambda v: "yes" if v else "no"  # noqa: E731
+    kind = source.kind if source else None
+    if kind == "cisa_kev":
+        return (
+            "Listed in CISA KEV: yes (confirmed active exploitation). "
+            f"Known ransomware use: {extra.get('ransomware') or 'Unknown'}."
+        )
+    if kind == "nvd":
+        return (
+            f"CVSS {extra.get('cvss_score')} (v{extra.get('cvss_version')}). "
+            f"Public exploit referenced by NVD: {yes_no(extra.get('has_public_exploit'))}. "
+            f"Listed in CISA KEV: {yes_no(extra.get('in_kev'))}."
+        )
+    return None
+
+
 def build_user_message(article: dict, source: Source | None) -> str:
     esc = lambda s: html.escape(s or "", quote=False)  # noqa: E731 - keeps tags from being closed early
     source_line = f"{source.name} (category hint: {source.category_hint})" if source else article["source_id"]
+    facts = build_facts(article, source)
     return (
         "<article>\n"
         f"<source>{esc(source_line)}</source>\n"
         f"<language>{article['lang']}</language>\n"
         f"<published>{(article.get('published_at') or '')[:10]}</published>\n"
-        f"<title>{esc(article['title'])}</title>\n"
+        + (f"<facts>{esc(facts)}</facts>\n" if facts else "")
+        + f"<title>{esc(article['title'])}</title>\n"
         f"<content>{esc(article.get('content'))}</content>\n"
         "</article>"
     )

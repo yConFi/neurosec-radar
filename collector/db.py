@@ -90,7 +90,7 @@ class DB:
     def pending_articles(self, limit: int) -> list[dict]:
         return (
             self.table("articles")
-            .select("id,source_id,title,content,lang,published_at,attempts")
+            .select("id,source_id,title,content,lang,published_at,attempts,extra")
             .eq("status", "pending").order("id").limit(limit).execute().data
         )
 
