@@ -1,10 +1,12 @@
 name: collect
 
 on:
-  schedule:
-    # Every 30 min, off the top of the hour (GitHub delays/drops jobs at :00 under load).
-    - cron: "7,37 * * * *"
+  # Main trigger: Supabase Cron calls the workflow_dispatch API at :07 and :37
+  # (see supabase/migrations/*_collector_trigger_cron.sql). GitHub's own
+  # schedule proved unreliable (~3 runs in 15 h), so it is only a backup now.
   workflow_dispatch:
+  schedule:
+    - cron: "23 */6 * * *"
 
 permissions:
   contents: read
