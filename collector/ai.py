@@ -75,9 +75,11 @@ release or event that changes the landscape.
 exploitation (not in CISA KEV, no public exploit or PoC, no reports of attacks) scores at most 7, \
 however high its CVSS. Raw CVE records (source NVD) usually belong in 4-7. Use <facts> when present.
 - is_curious: true if the item is unusual, surprising or fun enough to read regardless of importance.
-- summary_es: 2-4 sentences in Spanish. Keep technical terms in English (prompt injection, exploit, \
-RCE, zero-day, jailbreak, patch, ransomware, LLM, etc.). Lead with what happened and why it matters. \
-No marketing tone and no preamble such as "El artículo...".
+- summary_es: 2-4 sentences in Spanish from Spain (castellano peninsular: "monitorización", not \
+"monitoreo"; "ordenador", not "computadora"). Keep established technical terms in English \
+(prompt injection, exploit, RCE, zero-day, jailbreak, backdoor, patch, ransomware, LLM, etc.), but \
+write everything else in Spanish: no stray English words that are not technical terms. Lead with \
+what happened and why it matters. No marketing tone and no preamble such as "El artículo...".
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
 - is_urgent: true only if a security practitioner should act within 24 hours: there is evidence \
 of active exploitation or a public exploit AND the affected software is widely deployed. A high \
