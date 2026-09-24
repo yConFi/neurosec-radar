@@ -45,6 +45,8 @@ CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CUSTOM_ID = "article-{}"
 DETAIL_MIN_IMPORTANCE = 6  # below this, no detail_es / key_points / figures (saves output tokens)
 MAX_KEY_POINTS = 5
+# Less text than this = a teaser (or an arXiv abstract, max ~1.9k): nothing to expand on.
+DETAIL_MIN_SOURCE_CHARS = 2000
 MAX_FIGURES = 3
 
 SYSTEM_PROMPT = f"""You are the analyst behind NeuroSec Radar, a personal news radar for a Spanish \
@@ -89,19 +91,25 @@ blank line), same language rules as summary_es, that do NOT repeat the summary: 
 details (affected products and versions, attack vector, threat actor, figures, how the model or \
 tool works) and consequences. Keep every figure attached to exactly what the text says it \
 measures; never merge separate facts into one claim. If the content is only a short teaser, leave \
-it "" rather than pad or guess.
+it "" rather than pad or guess. When the article says <detail_allowed>no</detail_allowed>, only a \
+short text was available: detail_es, key_points and figures must be empty.
 - key_points: when detail_es is not empty, 3-{MAX_KEY_POINTS} short Spanish bullet points (max ~20 \
 words each, no leading dash) with the facts a practitioner would note down: affected versions, fixed \
 version or patch, mitigations, indicators, availability, prices. Empty list otherwise.
-- figures: the content may contain [FIG n: "alt text"] markers where the page had an image; the \
-text right after a marker is often its caption. When detail_es is not empty, choose up to \
-{MAX_FIGURES} figures that carry information: charts, tables, diagrams, attack chains, timelines, \
+- figures: the content may contain [FIG n: "alt text" · file-name] markers where the page had an \
+image; the text right after a marker is often its caption. When detail_es is not empty, choose up \
+to {MAX_FIGURES} figures that carry information: charts, tables, diagrams, attack chains, timelines, \
 maps, or screenshots that are evidence (code, phishing page, malicious UI, PoC output). Never pick \
 decorative or stock images, logos, product shots, photos of people or authors, ads, or thumbnails \
-of other articles. When unsure, leave it out. For each: index = n, and caption_es = the image's own \
-alt text/caption translated into Spanish, keeping the credit if there is one (e.g. "Tarjetas robadas. \
-Fuente: Gambit"). You cannot see the image: add only what the surrounding text explicitly says the \
-image shows, never guess its content or format. Empty list when there is nothing worth it.
+of other articles (images next to author bios, promos or "related" links). Many sites leave the alt \
+text empty: an image in the middle of a technical explanation (attack chain, infection flow, \
+malware or exploit analysis, architecture, benchmark results) usually illustrates that paragraph, \
+so pick it; descriptive file names (stage-1.jpg, attack-chain.png, results-table.png) are strong \
+hints. For each: index = n, and caption_es = the image's own alt text/caption translated into \
+Spanish, keeping the credit if there is one (e.g. "Tarjetas robadas. Fuente: Gambit"). If it has \
+none, write "Figura del artículo sobre" + the topic of the paragraph it sits in (e.g. "Figura del \
+artículo sobre la cadena de infección"). You cannot see the image: never describe its content or \
+format beyond what the text says. Empty list when there is nothing worth it.
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
 - is_urgent: true only if a security practitioner should act within 24 hours: there is evidence \
 of active exploitation or a public exploit AND the affected software is widely deployed. A high \
@@ -215,8 +223,14 @@ class AIResult(BaseModel):
             self.detail_es, self.key_points, self.figures = "", [], []
         return self
 
-    def to_row(self, image_candidates: list[str]) -> dict[str, Any]:
-        """DB columns. Figure indexes become URLs; an index the collector never offered is dropped."""
+    def to_row(self, image_candidates: list[str], allow_detail: bool = True) -> dict[str, Any]:
+        """DB columns. Figure indexes become URLs; an index the collector never offered is dropped.
+
+        allow_detail=False enforces in code what the prompt asks: with only a teaser, Haiku was
+        seen padding detail_es with invented commentary, so it is discarded whatever it wrote.
+        """
+        if not allow_detail:
+            self.detail_es, self.key_points, self.figures = "", [], []
         row = self.model_dump(exclude={"figures"})
         row["figures"] = [
             {"url": image_candidates[f.index - 1], "caption": f.caption_es}
@@ -245,6 +259,15 @@ def build_facts(article: dict, source: Source | None) -> str | None:
     return None
 
 
+def source_text(article: dict) -> str:
+    """Full page text when the collector could fetch it, else the feed snippet."""
+    return article.get("body") or article.get("content") or ""
+
+
+def detail_allowed(article: dict) -> bool:
+    return len(source_text(article)) >= DETAIL_MIN_SOURCE_CHARS
+
+
 def build_user_message(article: dict, source: Source | None) -> str:
     esc = lambda s: html.escape(s or "", quote=False)  # noqa: E731 - keeps tags from being closed early
     source_line = f"{source.name} (category hint: {source.category_hint})" if source else article["source_id"]
@@ -255,9 +278,9 @@ def build_user_message(article: dict, source: Source | None) -> str:
         f"<language>{article['lang']}</language>\n"
         f"<published>{(article.get('published_at') or '')[:10]}</published>\n"
         + (f"<facts>{esc(facts)}</facts>\n" if facts else "")
+        + ("" if detail_allowed(article) else "<detail_allowed>no</detail_allowed>\n")
         + f"<title>{esc(article['title'])}</title>\n"
-        # full page text when the collector could fetch it, else the feed snippet
-        f"<content>{esc(article.get('body') or article.get('content'))}</content>\n"
+        f"<content>{esc(source_text(article))}</content>\n"
         "</article>"
     )
 

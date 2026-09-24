@@ -104,11 +104,12 @@ class DB:
             out.extend(self.table("articles").select("id,title,source_id,attempts").in_("id", chunk).execute().data)
         return out
 
-    def image_candidates(self, ids: list[int]) -> dict[int, list[str]]:
-        out: dict[int, list[str]] = {}
+    def ai_inputs(self, ids: list[int]) -> dict[int, dict]:
+        """What the AI saw (still stored until its result is saved): text + image candidates."""
+        out: dict[int, dict] = {}
         for chunk in _chunks(ids, 200):
-            rows = self.table("articles").select("id,image_candidates").in_("id", chunk).execute().data
-            out.update({r["id"]: r["image_candidates"] or [] for r in rows})
+            rows = self.table("articles").select("id,content,body,image_candidates").in_("id", chunk).execute().data
+            out.update({r["id"]: r for r in rows})
         return out
 
     def mark_queued(self, ids: list[int], batch_id: str) -> None:

@@ -111,7 +111,9 @@ def extract(html: bytes | str, url: str) -> Page | None:
         if src in candidates:
             return ""
         candidates.append(src)
-        return f'[FIG {len(candidates)}: "{alt}"]'
+        # The file name is a free hint when alt text is missing (e.g. "stage-1.jpg", "attack-chain.png").
+        file = urlsplit(src).path.rsplit("/", 1)[-1][:60].replace("]", ")")
+        return f'[FIG {len(candidates)}: "{alt}" · {file}]'
 
     text = _MD_IMAGE.sub(marker, doc.text or "")
     return Page(text=re.sub(r"\n{3,}", "\n\n", text).strip(), image=lead, candidates=candidates)

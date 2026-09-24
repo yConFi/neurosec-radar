@@ -31,8 +31,8 @@ def test_extract_main_text_og_image_and_figure_markers():
     # lead image (same path as og:image), ad banner and http image are not candidates
     assert page.candidates == ["https://cdn.ex.com/waves.png", "https://cdn.ex.com/cards.png"]
     # figcaptions travel inside the marker, even when trafilatura drops them from the text
-    assert '[FIG 1: "Attack waves by hour · Source: Gambit"]' in page.text
-    assert '[FIG 2: "Stolen credit cards · Source: Gambit"]' in page.text
+    assert '[FIG 1: "Attack waves by hour · Source: Gambit" · waves.png]' in page.text
+    assert '[FIG 2: "Stolen credit cards · Source: Gambit" · cards.png]' in page.text
     assert "![" not in page.text
 
 

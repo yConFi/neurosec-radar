@@ -64,10 +64,12 @@ def collect_finished_batches(db: DB, client: anthropic.Anthropic, cfg: dict, now
         if not outcome.ended:
             continue
         stats["batches"] += 1
-        candidates = db.image_candidates(list(outcome.results))
+        inputs = db.ai_inputs(list(outcome.results))
         for article_id, result in outcome.results.items():
+            seen = inputs.get(article_id, {})
+            row = result.to_row(seen.get("image_candidates") or [], allow_detail=ai.detail_allowed(seen))
             # articles.highlight ('major' / 'top') is derived by Postgres from importance
-            db.save_ai_result(article_id, result.to_row(candidates.get(article_id, [])), batch["model"], now)
+            db.save_ai_result(article_id, row, batch["model"], now)
             stats["done"] += 1
         if outcome.failures:
             attempts = {a["id"]: a["attempts"] for a in db.articles_by_ids(list(outcome.failures))}

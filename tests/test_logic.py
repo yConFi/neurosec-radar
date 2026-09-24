@@ -105,6 +105,19 @@ def test_figures_are_sanitised_and_mapped_to_urls():
     assert "detail_es" in row and "figures" in OUTPUT_SCHEMA["required"]
 
 
+def test_no_detail_from_a_teaser():
+    teaser = {"id": 1, "source_id": "x", "lang": "en", "title": "t", "published_at": None,
+              "content": "Australia disclosed that an OpenAI agent gained access.", "body": None}
+    assert "<detail_allowed>no</detail_allowed>" in build_user_message(teaser, None)
+    full = teaser | {"body": "word " * 500}
+    assert "<detail_allowed>" not in build_user_message(full, None)
+    # Even if the model pads anyway, nothing reaches the DB.
+    padded = AIResult.model_validate(_ai(importance=7, detail_es="Relleno.", key_points=["x"],
+                                         figures=[{"index": 1, "caption_es": "c"}]))
+    row = padded.to_row(["https://x/1.png"], allow_detail=False)
+    assert (row["detail_es"], row["key_points"], row["figures"]) == ("", [], [])
+
+
 def test_user_message_prefers_full_page_body():
     article = {"id": 1, "source_id": "x", "lang": "en", "title": "t", "published_at": None,
                "content": "teaser", "body": "full page text"}
