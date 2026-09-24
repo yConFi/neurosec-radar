@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, URGENCY_FACTS, AIResult, build_user_message, needs_action
+from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, URGENCY_FACTS, AIResult, build_user_message, is_remediation, needs_action
 from collector.config import load_sources, settings
 from collector.dedup import find_duplicates
 
@@ -92,6 +92,28 @@ def test_needs_action_decision_table(product, exploitation, widely_deployed, act
     assert row["is_urgent"] is expected
     assert row["urgent_reason"] == (ACTION if expected else "")
     assert not set(URGENCY_FACTS) & set(row)  # no such DB columns
+
+
+@pytest.mark.parametrize(
+    ("action_es", "expected"),
+    [
+        ("Actualiza RouterOS a 7.24.2.", True),
+        ("Actualizar Bifrost a transports/v2.1.0.", True),          # infinitive, seen in real output
+        ("Aplica el hotfix de F5 para tu rama.", True),
+        ("Restringe el acceso remoto a la gestión del router.", True),
+        ("  «Bloquea el puerto 443 hasta parchear.»", True),
+        # real outputs that the prompt forbids but Haiku still wrote
+        ("Monitoriza sitios web en busca de inyecciones de código.", False),
+        ("Audita inyecciones de código en archivos JavaScript.", False),
+        ("Verifica urgentemente si tu organización utiliza Oracle PeopleSoft.", False),
+        ("Contacta con Oracle para obtener información sobre la vulnerabilidad.", False),
+        ("Las organizaciones afectadas deben revisar los registros.", False),
+        ("", False),
+    ],
+)
+def test_action_must_start_with_a_remediation_verb(action_es, expected):
+    assert is_remediation(action_es) is expected
+    assert needs_action(PRODUCT, "active", True, action_es, False) is expected
 
 
 def test_cisa_kev_overrides_the_model_on_exploitation():

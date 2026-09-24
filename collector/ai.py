@@ -175,6 +175,20 @@ OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+# action_es must open with a remediation verb (imperative or infinitive). In real runs Haiku kept
+# writing "Monitoriza…", "Audita…" or "Contacta con Oracle…" although the prompt forbids it.
+REMEDIATION_VERB_RE = re.compile(
+    r"^(actualiz|aplic|instal|parche|desactiv|deshabilit|desinstal|bloque|restring|limit|fij|"
+    r"elimin|retir|migr|rot|revoc|cambi|configur|habilit|a[ií]sl|desconect|sustitu|reemplaz|"
+    r"cierr|interrump|descontin)",
+    re.IGNORECASE,
+)
+
+
+def is_remediation(action_es: str) -> bool:
+    return bool(REMEDIATION_VERB_RE.match(action_es.strip().lstrip("¡¿\"'«")))
+
+
 def needs_action(
     affected_product: str, exploitation: str, widely_deployed: bool, action_es: str, is_roundup: bool
 ) -> bool:
@@ -182,7 +196,7 @@ def needs_action(
     directly flagged unexploited CVEs and "keep an eye on it" advice."""
     return (
         bool(affected_product.strip()) and exploitation != "none" and widely_deployed
-        and bool(action_es.strip()) and not is_roundup
+        and is_remediation(action_es) and not is_roundup
     )
 
 
