@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, AIResult, build_user_message
+from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, AIResult, build_user_message, needs_action
 from collector.config import load_sources, settings
 from collector.dedup import find_duplicates
 
@@ -37,8 +37,8 @@ def test_find_duplicates_subset_title_is_not_a_duplicate():
 # ---------------------------------------------------------------------- AI
 def _ai(**kw) -> dict:
     base = dict(category="cyber", subtopics=["exploit"], importance=7, is_curious=False,
-                summary_es="Resumen.", detail_es="", key_points=[], figures=[], cves=[], is_urgent=False,
-                urgent_reason="")
+                summary_es="Resumen.", detail_es="", key_points=[], figures=[], cves=[],
+                exploitation="none", widely_deployed=False, action_es="", is_roundup=False)
     return base | kw
 
 
@@ -50,19 +50,99 @@ def test_schema_requires_every_property():
 def test_ai_result_is_sanitised():
     r = AIResult.model_validate(_ai(
         importance=42, subtopics=["exploit", "made_up", "exploit", "ransomware"],
-        cves=["cve-2026-12345", "CVE-26-1", "CVE-2026-12345"], urgent_reason="should vanish",
+        cves=["cve-2026-12345", "CVE-26-1", "CVE-2026-12345"], action_es="  Actualiza X a 2.1.  ",
     ))
     assert r.importance == 10
     assert r.subtopics == ["exploit", "ransomware"]
     assert r.cves == ["CVE-2026-12345"]
-    assert r.urgent_reason == ""
+    assert r.action_es == "Actualiza X a 2.1."
 
 
-def test_ai_result_rejects_bad_category_and_empty_summary():
+def test_ai_result_rejects_bad_category_exploitation_and_empty_summary():
     with pytest.raises(ValidationError):
         AIResult.model_validate(_ai(category="sports"))
     with pytest.raises(ValidationError):
+        AIResult.model_validate(_ai(exploitation="maybe"))
+    with pytest.raises(ValidationError):
         AIResult.model_validate(_ai(summary_es="   "))
+
+
+ACTION = "Actualiza Exchange Server a la CU14 SU3."
+
+
+@pytest.mark.parametrize(
+    ("exploitation", "widely_deployed", "action_es", "is_roundup", "expected"),
+    [
+        ("active", True, ACTION, False, True),
+        ("poc_public", True, ACTION, False, True),
+        ("none", True, ACTION, False, False),        # high CVSS, no exploitation
+        ("active", False, ACTION, False, False),     # niche product
+        ("active", True, "", False, False),          # nothing concrete to do ("vigilar")
+        ("active", True, "   ", False, False),
+        ("active", True, ACTION, True, False),       # weekly roundup
+    ],
+)
+def test_needs_action_decision_table(exploitation, widely_deployed, action_es, is_roundup, expected):
+    assert needs_action(exploitation, widely_deployed, action_es, is_roundup) is expected
+    row = AIResult.model_validate(_ai(exploitation=exploitation, widely_deployed=widely_deployed,
+                                      action_es=action_es, is_roundup=is_roundup)).to_row([])
+    assert row["is_urgent"] is expected
+    assert row["urgent_reason"] == (ACTION if expected else "")
+    assert not {"exploitation", "widely_deployed", "action_es", "is_roundup"} & set(row)  # no such DB columns
+
+
+def test_cisa_kev_overrides_the_model_on_exploitation():
+    r = _ai(cves=["CVE-2026-10001"], exploitation="none", widely_deployed=True, action_es=ACTION)
+    assert AIResult.model_validate(r).to_row([])["is_urgent"] is False
+    assert AIResult.model_validate(r).to_row([], in_kev=True)["is_urgent"] is True
+    # KEV only settles exploitation: the other conditions still apply.
+    niche = AIResult.model_validate(r | {"widely_deployed": False}).to_row([], in_kev=True)
+    assert niche["is_urgent"] is False
+
+
+def test_results_from_batches_submitted_before_urgency_facts_still_parse():
+    old = _ai(importance=9, is_urgent=True, urgent_reason="Parchea ya.")
+    for key in ("exploitation", "widely_deployed", "action_es", "is_roundup"):
+        del old[key]
+    row = AIResult.model_validate(old).to_row([])
+    assert (row["is_urgent"], row["urgent_reason"]) == (False, "")
+
+
+def test_collect_finished_batches_checks_kev_for_the_articles_cves(monkeypatch):
+    from datetime import UTC, datetime
+
+    from collector import ai, pipeline
+
+    results = {
+        1: AIResult.model_validate(_ai(cves=["CVE-2026-10001"], widely_deployed=True, action_es=ACTION)),
+        2: AIResult.model_validate(_ai(cves=["CVE-2026-10002"], widely_deployed=True, action_es=ACTION)),
+    }
+    monkeypatch.setattr(ai, "collect_batch", lambda client, batch_id: ai.BatchOutcome(ended=True, results=results))
+
+    class FakeDB:
+        def __init__(self):
+            self.saved: dict[int, dict] = {}
+
+        def open_batches(self):
+            return [{"id": "b1", "model": "m"}]
+
+        def ai_inputs(self, ids):
+            return {}
+
+        def kev_cves(self, cves):
+            assert sorted(cves) == ["CVE-2026-10001", "CVE-2026-10002"]
+            return {"CVE-2026-10001"}
+
+        def save_ai_result(self, article_id, row, model, now):
+            self.saved[article_id] = row
+
+        def close_batch(self, *args):
+            pass
+
+    db = FakeDB()
+    pipeline.collect_finished_batches(db, None, CFG, datetime.now(UTC))
+    assert db.saved[1]["is_urgent"] is True and db.saved[1]["urgent_reason"] == ACTION
+    assert db.saved[2]["is_urgent"] is False
 
 
 def test_detail_is_kept_only_for_important_items():

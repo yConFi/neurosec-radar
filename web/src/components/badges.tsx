@@ -41,6 +41,12 @@ export function ActionRequired({ reason }: { reason: string | null }) {
   )
 }
 
+/** The concrete action behind «Acción requerida» (product + fixed version or mitigation). */
+export function ActionText({ reason, className = "" }: { reason: string | null; className?: string }) {
+  if (!reason) return null
+  return <p className={`text-sm font-medium text-red-700 dark:text-red-300 ${className}`}>→ {reason}</p>
+}
+
 export function SubtopicList({ subtopics }: { subtopics: string[] | null }) {
   if (!subtopics?.length) return null
   return (

@@ -46,7 +46,11 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
           {a.is_urgent && (
             <div className="rounded-lg border border-red-600/40 bg-red-50 p-3 text-sm dark:bg-red-950/40">
               <ActionRequired reason={null} />
-              <p className="mt-2 text-red-800 dark:text-red-200">{a.urgent_reason}</p>
+              {a.urgent_reason && (
+                <p className="mt-2 text-red-800 dark:text-red-200">
+                  <span className="font-semibold">Qué hacer:</span> {a.urgent_reason}
+                </p>
+              )}
             </div>
           )}
 

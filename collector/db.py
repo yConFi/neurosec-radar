@@ -146,6 +146,14 @@ class DB:
         res = self.table("vulnerabilities").select("cve_id").eq("in_kev", True).limit(1).execute()
         return bool(res.data)
 
+    def kev_cves(self, cves: list[str]) -> set[str]:
+        """The subset of `cves` listed in CISA KEV."""
+        out: set[str] = set()
+        for chunk in _chunks(sorted(set(cves)), 200):
+            rows = self.table("vulnerabilities").select("cve_id").in_("cve_id", chunk).eq("in_kev", True).execute().data
+            out.update(r["cve_id"] for r in rows)
+        return out
+
     def upsert_vulnerabilities(self, vulns: list[Vulnerability]) -> None:
         # PostgREST bulk upserts write the *union* of keys and fill the gaps with
         # NULL/DEFAULT, which would e.g. reset in_kev=true to false. So group rows

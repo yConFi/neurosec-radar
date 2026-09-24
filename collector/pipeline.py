@@ -65,9 +65,14 @@ def collect_finished_batches(db: DB, client: anthropic.Anthropic, cfg: dict, now
             continue
         stats["batches"] += 1
         inputs = db.ai_inputs(list(outcome.results))
+        in_kev = db.kev_cves([c for r in outcome.results.values() for c in r.cves])
         for article_id, result in outcome.results.items():
             seen = inputs.get(article_id, {})
-            row = result.to_row(seen.get("image_candidates") or [], allow_detail=ai.detail_allowed(seen))
+            row = result.to_row(
+                seen.get("image_candidates") or [],
+                allow_detail=ai.detail_allowed(seen),
+                in_kev=bool(in_kev.intersection(result.cves)),  # CISA KEV beats the model's reading
+            )
             # articles.highlight ('major' / 'top') is derived by Postgres from importance
             db.save_ai_result(article_id, row, batch["model"], now)
             stats["done"] += 1

@@ -41,6 +41,7 @@ SUBTOPICS = (
     # resources
     "security_tool", "ctf", "learning_resource",
 )
+EXPLOITATION = ("none", "poc_public", "active")
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CUSTOM_ID = "article-{}"
 DETAIL_MIN_IMPORTANCE = 6  # below this, no detail_es / key_points / figures (saves output tokens)
@@ -111,10 +112,25 @@ none, write "Figura del artículo sobre" + the topic of the paragraph it sits in
 artículo sobre la cadena de infección"). You cannot see the image: never describe its content or \
 format beyond what the text says. Empty list when there is nothing worth it.
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
-- is_urgent: true only if a security practitioner should act within 24 hours: there is evidence \
-of active exploitation or a public exploit AND the affected software is widely deployed. A high \
-CVSS alone never makes an item urgent.
-- urgent_reason: one short Spanish sentence explaining the urgency, or "" when is_urgent is false.
+The next four fields are facts, not a verdict: the app decides on its own whether an item needs \
+action. Report only what the text supports.
+- exploitation: "active" if the text reports exploitation in the wild, attacks using the flaw, or \
+a CISA KEV listing; "poc_public" if a public exploit or proof of concept is available but no \
+attacks are reported; "none" otherwise, including items that are not about a vulnerability. A \
+high CVSS, "critical" severity or "easy to exploit" is not exploitation.
+- widely_deployed: true if the affected product is widely used by organisations or the public \
+(major operating systems, browsers, office and mail servers, VPNs and firewalls of major vendors, \
+hypervisors, popular CMS cores, very popular libraries). False for niche products, plugins or \
+packages with a small install base, a single organisation's own systems, or when no specific \
+product is affected.
+- action_es: one short Spanish sentence with the concrete action a practitioner should take now, \
+naming the product and the fixed version, patch or specific mitigation given in the text (e.g. \
+"Actualiza FortiOS a 7.4.5 o posterior." or "Bloquea el acceso a la interfaz de gestión desde \
+Internet hasta aplicar el parche."). "" when there is no vulnerability, when the text gives no \
+concrete fix or mitigation, or when the only advice would be to monitor, evaluate or stay alert.
+- is_roundup: true if the item is a digest covering several unrelated stories (weekly or daily \
+summary, newsletter, "week in review"); false for an article about one story or one vendor's \
+update.
 
 Allowed subtopics: {", ".join(SUBTOPICS)}."""
 
@@ -138,15 +154,23 @@ OUTPUT_SCHEMA: dict[str, Any] = {
             },
         },
         "cves": {"type": "array", "items": {"type": "string"}},
-        "is_urgent": {"type": "boolean"},
-        "urgent_reason": {"type": "string"},
+        "exploitation": {"type": "string", "enum": list(EXPLOITATION)},
+        "widely_deployed": {"type": "boolean"},
+        "action_es": {"type": "string"},
+        "is_roundup": {"type": "boolean"},
     },
     "required": [
         "category", "subtopics", "importance", "is_curious", "summary_es", "detail_es", "key_points",
-        "figures", "cves", "is_urgent", "urgent_reason",
+        "figures", "cves", "exploitation", "widely_deployed", "action_es", "is_roundup",
     ],
     "additionalProperties": False,
 }
+
+
+def needs_action(exploitation: str, widely_deployed: bool, action_es: str, is_roundup: bool) -> bool:
+    """«Acción requerida»: the model reports facts, this decides. Asking Haiku for is_urgent
+    directly flagged unexploited CVEs and "keep an eye on it" advice."""
+    return exploitation != "none" and widely_deployed and bool(action_es.strip()) and not is_roundup
 
 
 class Figure(BaseModel):
@@ -168,8 +192,12 @@ class AIResult(BaseModel):
     key_points: list[str] = []
     figures: list[Figure] = []
     cves: list[str]
-    is_urgent: bool
-    urgent_reason: str
+    # Same for the urgency facts. Old batches returned is_urgent/urgent_reason instead: those are
+    # ignored (extra keys), so such an item is never urgent unless re-analysed.
+    exploitation: Literal["none", "poc_public", "active"] = "none"
+    widely_deployed: bool = False
+    action_es: str = ""
+    is_roundup: bool = False
 
     @field_validator("importance")
     @classmethod
@@ -210,11 +238,10 @@ class AIResult(BaseModel):
                 out.append(Figure(index=f.index, caption_es=caption))
         return out[:MAX_FIGURES]
 
-    @model_validator(mode="after")
-    def _reason_only_if_urgent(self) -> "AIResult":
-        if not self.is_urgent:
-            self.urgent_reason = ""
-        return self
+    @field_validator("action_es")
+    @classmethod
+    def _strip_action(cls, v: str) -> str:
+        return v.strip()
 
     @model_validator(mode="after")
     def _detail_only_if_important(self) -> "AIResult":
@@ -223,15 +250,20 @@ class AIResult(BaseModel):
             self.detail_es, self.key_points, self.figures = "", [], []
         return self
 
-    def to_row(self, image_candidates: list[str], allow_detail: bool = True) -> dict[str, Any]:
+    def to_row(self, image_candidates: list[str], allow_detail: bool = True, in_kev: bool = False) -> dict[str, Any]:
         """DB columns. Figure indexes become URLs; an index the collector never offered is dropped.
 
         allow_detail=False enforces in code what the prompt asks: with only a teaser, Haiku was
         seen padding detail_es with invented commentary, so it is discarded whatever it wrote.
+        in_kev=True (one of its CVEs is in CISA KEV) overrides the model: exploitation is active.
         """
         if not allow_detail:
             self.detail_es, self.key_points, self.figures = "", [], []
-        row = self.model_dump(exclude={"figures"})
+        if in_kev:
+            self.exploitation = "active"
+        row = self.model_dump(exclude={"figures", "exploitation", "widely_deployed", "action_es", "is_roundup"})
+        row["is_urgent"] = needs_action(self.exploitation, self.widely_deployed, self.action_es, self.is_roundup)
+        row["urgent_reason"] = self.action_es if row["is_urgent"] else ""
         row["figures"] = [
             {"url": image_candidates[f.index - 1], "caption": f.caption_es}
             for f in self.figures

@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import { ActionRequired, CategoryBadge, ImportanceBadge, SubtopicList } from "@/components/badges"
+import { ActionRequired, ActionText, CategoryBadge, ImportanceBadge, SubtopicList } from "@/components/badges"
 import { ExternalImage } from "@/components/external-image"
 import { FavoriteButton, ReadButton } from "@/components/state-buttons"
 import type { Card } from "@/lib/feed"
@@ -45,6 +45,7 @@ export function ArticleCard({ item, compact = false }: { item: Card; compact?: b
           {!compact && item.summary_es && (
             <p className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{item.summary_es}</p>
           )}
+          {item.is_urgent && <ActionText reason={item.urgent_reason} className="mt-2" />}
         </div>
         {!compact && (
           <ExternalImage

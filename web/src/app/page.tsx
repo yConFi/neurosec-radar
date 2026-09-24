@@ -2,7 +2,7 @@ import Link from "next/link"
 
 import { markAllBannerRead, setRead } from "@/app/actions"
 import { ArticleCard } from "@/components/article-card"
-import { ActionRequired } from "@/components/badges"
+import { ActionRequired, ActionText } from "@/components/badges"
 import { FiltersForm } from "@/components/filters"
 import { Header } from "@/components/header"
 import { PAGE_SIZE, getBanner, getFeed, getHighlights, getSources, hasActiveFilters, parseFilters } from "@/lib/feed"
@@ -61,6 +61,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       {item.title}
                     </Link>
                     <p className="mt-0.5 text-sm text-zinc-700 dark:text-zinc-300">{item.summary_es}</p>
+                    {item.is_urgent && <ActionText reason={item.urgent_reason} className="mt-1" />}
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
                       {item.is_urgent && <ActionRequired reason={item.urgent_reason} />}
                       <span>
