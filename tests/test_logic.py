@@ -77,6 +77,14 @@ def test_detail_is_kept_only_for_important_items():
     assert no_detail.key_points == [] and no_detail.figures == []
 
 
+def test_results_from_batches_submitted_before_detail_fields_still_parse():
+    old = _ai(importance=8)
+    for key in ("detail_es", "key_points", "figures"):
+        del old[key]
+    r = AIResult.model_validate(old)
+    assert (r.detail_es, r.key_points, r.figures) == ("", [], [])
+
+
 def test_figures_are_sanitised_and_mapped_to_urls():
     figures = [
         {"index": 2, "caption_es": " Tarjetas robadas por país. Fuente: Gambit "},

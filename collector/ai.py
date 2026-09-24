@@ -154,9 +154,11 @@ class AIResult(BaseModel):
     importance: int
     is_curious: bool
     summary_es: str
-    detail_es: str
-    key_points: list[str]
-    figures: list[Figure]
+    # Defaults only so that batches submitted before these fields existed still parse;
+    # OUTPUT_SCHEMA makes the model always return them.
+    detail_es: str = ""
+    key_points: list[str] = []
+    figures: list[Figure] = []
     cves: list[str]
     is_urgent: bool
     urgent_reason: str
