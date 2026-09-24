@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, AIResult, build_user_message, needs_action
+from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, URGENCY_FACTS, AIResult, build_user_message, needs_action
 from collector.config import load_sources, settings
 from collector.dedup import find_duplicates
 
@@ -38,7 +38,7 @@ def test_find_duplicates_subset_title_is_not_a_duplicate():
 def _ai(**kw) -> dict:
     base = dict(category="cyber", subtopics=["exploit"], importance=7, is_curious=False,
                 summary_es="Resumen.", detail_es="", key_points=[], figures=[], cves=[],
-                exploitation="none", widely_deployed=False, action_es="", is_roundup=False)
+                affected_product="Microsoft Exchange Server", exploitation="none", widely_deployed=False, action_es="", is_roundup=False)
     return base | kw
 
 
@@ -67,28 +67,31 @@ def test_ai_result_rejects_bad_category_exploitation_and_empty_summary():
         AIResult.model_validate(_ai(summary_es="   "))
 
 
+PRODUCT = "Microsoft Exchange Server"
 ACTION = "Actualiza Exchange Server a la CU14 SU3."
 
 
 @pytest.mark.parametrize(
-    ("exploitation", "widely_deployed", "action_es", "is_roundup", "expected"),
+    ("product", "exploitation", "widely_deployed", "action_es", "is_roundup", "expected"),
     [
-        ("active", True, ACTION, False, True),
-        ("poc_public", True, ACTION, False, True),
-        ("none", True, ACTION, False, False),        # high CVSS, no exploitation
-        ("active", False, ACTION, False, False),     # niche product
-        ("active", True, "", False, False),          # nothing concrete to do ("vigilar")
-        ("active", True, "   ", False, False),
-        ("active", True, ACTION, True, False),       # weekly roundup
+        (PRODUCT, "active", True, ACTION, False, True),
+        (PRODUCT, "poc_public", True, ACTION, False, True),
+        (PRODUCT, "none", True, ACTION, False, False),        # high CVSS, no exploitation
+        (PRODUCT, "active", False, ACTION, False, False),     # niche product
+        (PRODUCT, "active", True, "", False, False),          # nothing concrete to do ("vigilar")
+        (PRODUCT, "active", True, "   ", False, False),
+        (PRODUCT, "active", True, ACTION, True, False),       # weekly roundup
+        ("", "active", True, ACTION, False, False),           # campaign / breach, no product to patch
     ],
 )
-def test_needs_action_decision_table(exploitation, widely_deployed, action_es, is_roundup, expected):
-    assert needs_action(exploitation, widely_deployed, action_es, is_roundup) is expected
-    row = AIResult.model_validate(_ai(exploitation=exploitation, widely_deployed=widely_deployed,
-                                      action_es=action_es, is_roundup=is_roundup)).to_row([])
+def test_needs_action_decision_table(product, exploitation, widely_deployed, action_es, is_roundup, expected):
+    assert needs_action(product, exploitation, widely_deployed, action_es, is_roundup) is expected
+    row = AIResult.model_validate(_ai(affected_product=product, exploitation=exploitation,
+                                      widely_deployed=widely_deployed, action_es=action_es,
+                                      is_roundup=is_roundup)).to_row([])
     assert row["is_urgent"] is expected
     assert row["urgent_reason"] == (ACTION if expected else "")
-    assert not {"exploitation", "widely_deployed", "action_es", "is_roundup"} & set(row)  # no such DB columns
+    assert not set(URGENCY_FACTS) & set(row)  # no such DB columns
 
 
 def test_cisa_kev_overrides_the_model_on_exploitation():
@@ -102,7 +105,7 @@ def test_cisa_kev_overrides_the_model_on_exploitation():
 
 def test_results_from_batches_submitted_before_urgency_facts_still_parse():
     old = _ai(importance=9, is_urgent=True, urgent_reason="Parchea ya.")
-    for key in ("exploitation", "widely_deployed", "action_es", "is_roundup"):
+    for key in URGENCY_FACTS:
         del old[key]
     row = AIResult.model_validate(old).to_row([])
     assert (row["is_urgent"], row["urgent_reason"]) == (False, "")

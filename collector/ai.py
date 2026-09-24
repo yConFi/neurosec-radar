@@ -42,6 +42,8 @@ SUBTOPICS = (
     "security_tool", "ctf", "learning_resource",
 )
 EXPLOITATION = ("none", "poc_public", "active")
+# Model output used only to decide is_urgent / urgent_reason (not DB columns).
+URGENCY_FACTS = ("affected_product", "exploitation", "widely_deployed", "action_es", "is_roundup")
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CUSTOM_ID = "article-{}"
 DETAIL_MIN_IMPORTANCE = 6  # below this, no detail_es / key_points / figures (saves output tokens)
@@ -112,22 +114,27 @@ none, write "Figura del artículo sobre" + the topic of the paragraph it sits in
 artículo sobre la cadena de infección"). You cannot see the image: never describe its content or \
 format beyond what the text says. Empty list when there is nothing worth it.
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
-The next four fields are facts, not a verdict: the app decides on its own whether an item needs \
+The next five fields are facts, not a verdict: the app decides on its own whether an item needs \
 action. Report only what the text supports.
+- affected_product: the specific software, device, service or package that has the vulnerability \
+or was compromised, with its vendor (e.g. "Fortinet FortiOS", "WordPress core", "npm package \
+@scope/name"). "" when no specific product is affected: campaigns, breaches of one organisation, \
+skimming or phishing operations, research, policy, AI news.
 - exploitation: "active" if the text reports exploitation in the wild, attacks using the flaw, or \
 a CISA KEV listing; "poc_public" if a public exploit or proof of concept is available but no \
 attacks are reported; "none" otherwise, including items that are not about a vulnerability. A \
 high CVSS, "critical" severity or "easy to exploit" is not exploitation.
-- widely_deployed: true if the affected product is widely used by organisations or the public \
-(major operating systems, browsers, office and mail servers, VPNs and firewalls of major vendors, \
-hypervisors, popular CMS cores, very popular libraries). False for niche products, plugins or \
-packages with a small install base, a single organisation's own systems, or when no specific \
-product is affected.
-- action_es: one short Spanish sentence with the concrete action a practitioner should take now, \
-naming the product and the fixed version, patch or specific mitigation given in the text (e.g. \
-"Actualiza FortiOS a 7.4.5 o posterior." or "Bloquea el acceso a la interfaz de gestión desde \
-Internet hasta aplicar el parche."). "" when there is no vulnerability, when the text gives no \
-concrete fix or mitigation, or when the only advice would be to monitor, evaluate or stay alert.
+- widely_deployed: true if affected_product is widely used by organisations or the public (major \
+operating systems, browsers, office and mail servers, VPNs and firewalls of major vendors, \
+hypervisors, popular CMS cores, libraries with millions of downloads). False for niche products, \
+plugins or packages with a small install base, and when affected_product is "".
+- action_es: one short Spanish sentence, starting with an imperative verb, with the fix or \
+mitigation for affected_product that the text gives: update to a named version, apply a named \
+patch or hotfix, or a specific configuration change (e.g. "Actualiza FortiOS a 7.4.5 o posterior." \
+or "Bloquea el acceso a la interfaz de gestión desde Internet hasta aplicar el parche."). "" when \
+affected_product is "", when the text gives no fix or mitigation (e.g. no patch yet and no \
+workaround), or when the advice would only be to monitor, check, review, verify or stay alert: \
+"Monitoriza…", "Revisa…", "Verifica si…" or "aplica cualquier parche disponible" are not actions.
 - is_roundup: true if the item is a digest covering several unrelated stories (weekly or daily \
 summary, newsletter, "week in review"); false for an article about one story or one vendor's \
 update.
@@ -154,6 +161,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
             },
         },
         "cves": {"type": "array", "items": {"type": "string"}},
+        "affected_product": {"type": "string"},
         "exploitation": {"type": "string", "enum": list(EXPLOITATION)},
         "widely_deployed": {"type": "boolean"},
         "action_es": {"type": "string"},
@@ -161,16 +169,21 @@ OUTPUT_SCHEMA: dict[str, Any] = {
     },
     "required": [
         "category", "subtopics", "importance", "is_curious", "summary_es", "detail_es", "key_points",
-        "figures", "cves", "exploitation", "widely_deployed", "action_es", "is_roundup",
+        "figures", "cves", "affected_product", "exploitation", "widely_deployed", "action_es", "is_roundup",
     ],
     "additionalProperties": False,
 }
 
 
-def needs_action(exploitation: str, widely_deployed: bool, action_es: str, is_roundup: bool) -> bool:
+def needs_action(
+    affected_product: str, exploitation: str, widely_deployed: bool, action_es: str, is_roundup: bool
+) -> bool:
     """«Acción requerida»: the model reports facts, this decides. Asking Haiku for is_urgent
     directly flagged unexploited CVEs and "keep an eye on it" advice."""
-    return exploitation != "none" and widely_deployed and bool(action_es.strip()) and not is_roundup
+    return (
+        bool(affected_product.strip()) and exploitation != "none" and widely_deployed
+        and bool(action_es.strip()) and not is_roundup
+    )
 
 
 class Figure(BaseModel):
@@ -194,6 +207,7 @@ class AIResult(BaseModel):
     cves: list[str]
     # Same for the urgency facts. Old batches returned is_urgent/urgent_reason instead: those are
     # ignored (extra keys), so such an item is never urgent unless re-analysed.
+    affected_product: str = ""
     exploitation: Literal["none", "poc_public", "active"] = "none"
     widely_deployed: bool = False
     action_es: str = ""
@@ -238,9 +252,9 @@ class AIResult(BaseModel):
                 out.append(Figure(index=f.index, caption_es=caption))
         return out[:MAX_FIGURES]
 
-    @field_validator("action_es")
+    @field_validator("affected_product", "action_es")
     @classmethod
-    def _strip_action(cls, v: str) -> str:
+    def _strip(cls, v: str) -> str:
         return v.strip()
 
     @model_validator(mode="after")
@@ -261,8 +275,10 @@ class AIResult(BaseModel):
             self.detail_es, self.key_points, self.figures = "", [], []
         if in_kev:
             self.exploitation = "active"
-        row = self.model_dump(exclude={"figures", "exploitation", "widely_deployed", "action_es", "is_roundup"})
-        row["is_urgent"] = needs_action(self.exploitation, self.widely_deployed, self.action_es, self.is_roundup)
+        row = self.model_dump(exclude={"figures", *URGENCY_FACTS})
+        row["is_urgent"] = needs_action(
+            self.affected_product, self.exploitation, self.widely_deployed, self.action_es, self.is_roundup
+        )
         row["urgent_reason"] = self.action_es if row["is_urgent"] else ""
         row["figures"] = [
             {"url": image_candidates[f.index - 1], "caption": f.caption_es}

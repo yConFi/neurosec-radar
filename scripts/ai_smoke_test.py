@@ -52,13 +52,13 @@ def main() -> int:
     kev = db.kev_cves([c for r in results.values() for c in r.cves])
     for aid, r in results.items():
         a = articles[aid]
-        facts = (r.exploitation, r.widely_deployed, r.action_es, r.is_roundup)
+        facts = (r.exploitation, r.widely_deployed, r.action_es, r.is_roundup, r.affected_product)
         row = r.to_row(a.get("image_candidates") or [], allow_detail=ai.detail_allowed(a),
                        in_kev=bool(kev.intersection(r.cves)))
         print(f"\n#{aid} [{a['source_id']}] {a['title'][:100]}")
         print(f"  text: {len(ai.source_text(a))} chars · importance {r.importance} · cves {r.cves} · "
               f"KEV {sorted(kev.intersection(r.cves))}")
-        print(f"  model: exploitation={facts[0]} widely_deployed={facts[1]} is_roundup={facts[3]}")
+        print(f"  model: product={facts[4]!r} exploitation={facts[0]} widely_deployed={facts[1]} is_roundup={facts[3]}")
         print(f"  action_es: {facts[2]!r}")
         print(f"  urgent: before={a['is_urgent']} -> now={row['is_urgent']}")
     print(f"\nTokens: input {usage[0]}, output {usage[1]} (model {cfg['ai']['model']}, Messages API)")
