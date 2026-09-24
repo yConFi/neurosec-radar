@@ -2,6 +2,7 @@
 
 Order matters:
   1. collect finished AI batches (results reach the DB as early as possible)
+     + group the same CVE covered by several sources (CVEs come from the AI)
   2. fetch every source concurrently
   3. insert articles (UNIQUE url) + mark near-duplicate titles
      + download the page of each new RSS article (full text for the AI, image)
@@ -20,7 +21,7 @@ from typing import Any
 
 import anthropic
 
-from . import ai, page
+from . import ai, grouping, page
 from .config import Source, env, load_sources, settings
 from .db import DB
 from .dedup import find_duplicates
@@ -57,8 +58,10 @@ def fetch_all(
         return dict(zip((s.id for s in sources), pool.map(one, sources)))
 
 
-def collect_finished_batches(db: DB, client: anthropic.Anthropic, cfg: dict, now: datetime) -> dict:
-    stats = {"batches": 0, "done": 0, "failed": 0}
+def collect_finished_batches(
+    db: DB, client: anthropic.Anthropic, cfg: dict, now: datetime, kinds: dict[str, str]
+) -> dict:
+    stats = {"batches": 0, "done": 0, "failed": 0, "grouped": 0}
     for batch in db.open_batches():
         outcome = ai.collect_batch(client, batch["id"])
         if not outcome.ended:
@@ -76,6 +79,12 @@ def collect_finished_batches(db: DB, client: anthropic.Anthropic, cfg: dict, now
             # articles.highlight ('major' / 'top') is derived by Postgres from importance
             db.save_ai_result(article_id, row, batch["model"], now)
             stats["done"] += 1
+            if grouping.groupable(row):
+                since = now - timedelta(days=cfg["dedup"]["window_days"])
+                plan = grouping.plan_group(db.cve_group_candidates(row["cves"], since), kinds)
+                if plan:
+                    db.regroup(*plan)
+                    stats["grouped"] += 1
         if outcome.failures:
             attempts = {a["id"]: a["attempts"] for a in db.articles_by_ids(list(outcome.failures))}
             for article_id, error in outcome.failures.items():
@@ -106,10 +115,11 @@ def run(*, dry_run: bool = False, skip_ai: bool = False) -> int:
         db.sync_sources(all_sources)
         states = db.source_states()
         claude = None if skip_ai else anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+        kind_of = {s.id: s.kind for s in all_sources}
 
         # 1. AI results from previous runs
         if claude:
-            stats["ai_collect"] = collect_finished_batches(db, claude, cfg, now)
+            stats["ai_collect"] = collect_finished_batches(db, claude, cfg, now, kind_of)
 
         # 2. fetch
         results = fetch_all(sources, states, cfg, now, kev_full_sync=not db.kev_seeded())
@@ -120,7 +130,6 @@ def run(*, dry_run: bool = False, skip_ai: bool = False) -> int:
 
         # 3. articles + near-duplicate titles
         inserted = db.insert_articles(items, normalize_title)
-        kind_of = {s.id: s.kind for s in all_sources}
         dedupable = [(r["id"], r["title_norm"]) for r in inserted if kind_of[r["source_id"]] not in NO_TITLE_DEDUP_KINDS]
         d = cfg["dedup"]
         existing = db.recent_titles(now - timedelta(days=d["window_days"]), exclude_ids={i for i, _ in dedupable})

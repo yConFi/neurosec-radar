@@ -73,6 +73,7 @@ export async function getBanner(supabase: Client) {
     .from("feed")
     .select(CARD_COLUMNS, { count: "exact" })
     .eq("highlight", "major")
+    .is("duplicate_of", null)
     .is("read_at", null)
     .order("sort_at", { ascending: false })
     .limit(5)
@@ -86,6 +87,7 @@ export async function getHighlights(supabase: Client) {
     .from("feed")
     .select(CARD_COLUMNS)
     .eq("highlight", "top")
+    .is("duplicate_of", null)
     .gte("sort_at", hoursAgo(48))
     .order("sort_at", { ascending: false })
     .limit(8)
@@ -94,7 +96,8 @@ export async function getHighlights(supabase: Client) {
 }
 
 export async function getFeed(supabase: Client, f: Filters) {
-  let query = supabase.from("feed").select(CARD_COLUMNS, { count: "exact" })
+  // Same story from several sources (grouped by CVE): only its primary is listed.
+  let query = supabase.from("feed").select(CARD_COLUMNS, { count: "exact" }).is("duplicate_of", null)
 
   if (f.q) query = query.textSearch("search", f.q, { type: "websearch", config: "simple" })
   if (f.cat) query = query.eq("category", f.cat)
@@ -127,14 +130,25 @@ export async function getArticle(supabase: Client, id: number) {
   if (!data) return null
 
   const cves = data.cves ?? []
-  const [vulns, alsoIn] = await Promise.all([
+  const [vulns, alsoIn, groupedIn] = await Promise.all([
     cves.length
       ? supabase.from("vulnerabilities").select("*").in("cve_id", cves)
       : Promise.resolve({ data: [], error: null }),
-    // Near-duplicates found by the collector ("also covered by ...")
-    supabase.from("articles").select("id,url,title,source_id").eq("duplicate_of", id),
+    // Same story elsewhere: near-duplicate titles (never processed) and articles grouped
+    // by CVE (processed: status 'done', they have their own detail page).
+    supabase.from("articles").select("id,url,title,source_id,status").eq("duplicate_of", id).order("id"),
+    // This article is itself a member of another story's group.
+    data.duplicate_of
+      ? supabase.from("articles").select("id,title").eq("id", data.duplicate_of).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ])
   if (vulns.error) throw vulns.error
   if (alsoIn.error) throw alsoIn.error
-  return { article: data, vulnerabilities: vulns.data ?? [], alsoIn: alsoIn.data ?? [] }
+  if (groupedIn.error) throw groupedIn.error
+  return {
+    article: data,
+    vulnerabilities: vulns.data ?? [],
+    alsoIn: alsoIn.data ?? [],
+    groupedIn: groupedIn.data,
+  }
 }

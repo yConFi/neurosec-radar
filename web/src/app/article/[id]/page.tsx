@@ -18,7 +18,7 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
   const { supabase, email } = await requireUser()
   const result = await getArticle(supabase, id)
   if (!result) notFound()
-  const { article: a, vulnerabilities, alsoIn } = result
+  const { article: a, vulnerabilities, alsoIn, groupedIn } = result
   const external = safeUrl(a.url)
   const paragraphs = (a.detail_es ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
   const keyPoints = a.key_points ?? []
@@ -31,6 +31,16 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Volver
         </Link>
+
+        {groupedIn && (
+          <p className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            Misma noticia que{" "}
+            <Link href={`/article/${groupedIn.id}`} className="font-medium hover:underline">
+              {groupedIn.title}
+            </Link>
+            , donde aparece en el feed.
+          </p>
+        )}
 
         <article className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -147,9 +157,15 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
             <ul className="space-y-1 text-sm">
               {alsoIn.map((d) => (
                 <li key={d.id}>
-                  <a href={safeUrl(d.url)} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline">
-                    {d.source_id}: {d.title}
-                  </a>
+                  {d.status === "done" ? (
+                    <Link href={`/article/${d.id}`} className="hover:underline">
+                      {d.source_id}: {d.title}
+                    </Link>
+                  ) : (
+                    <a href={safeUrl(d.url)} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline">
+                      {d.source_id}: {d.title}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

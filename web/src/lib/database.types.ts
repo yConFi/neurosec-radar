@@ -170,6 +170,7 @@ export type Database = {
           category: string | null
           cves: string[] | null
           detail_es: string | null
+          duplicate_of: number | null
           external_id: string | null
           extra: Json | null
           favorite: boolean | null

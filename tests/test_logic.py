@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from collector.ai import OUTPUT_SCHEMA, SUBTOPICS, URGENCY_FACTS, AIResult, build_user_message, is_remediation, needs_action
 from collector.config import load_sources, settings
 from collector.dedup import find_duplicates
+from collector.grouping import groupable, plan_group
 
 CFG = settings()
 
@@ -161,11 +162,14 @@ def test_collect_finished_batches_checks_kev_for_the_articles_cves(monkeypatch):
         def save_ai_result(self, article_id, row, model, now):
             self.saved[article_id] = row
 
+        def cve_group_candidates(self, cves, since):
+            return []
+
         def close_batch(self, *args):
             pass
 
     db = FakeDB()
-    pipeline.collect_finished_batches(db, None, CFG, datetime.now(UTC))
+    pipeline.collect_finished_batches(db, None, CFG, datetime.now(UTC), {})
     assert db.saved[1]["is_urgent"] is True and db.saved[1]["urgent_reason"] == ACTION
     assert db.saved[2]["is_urgent"] is False
 
@@ -248,3 +252,78 @@ def test_user_message_includes_exploitation_facts_for_nvd():
     assert "<facts>CVSS 10.0 (v3.1). Public exploit referenced by NVD: no. Listed in CISA KEV: no.</facts>" in msg
     rss = Source(id="x", name="X", kind="rss", url="u", lang="en")
     assert "<facts>" not in build_user_message(article | {"source_id": "x"}, rss)
+
+
+# ---------------------------------------------------------------- grouping
+def _art(id, cves, importance=8, source_id="news", published_at="2026-09-23T10:00:00+00:00"):
+    return {"id": id, "source_id": source_id, "importance": importance, "cves": cves,
+            "published_at": published_at, "fetched_at": "2026-09-23T12:00:00+00:00"}
+
+
+KINDS = {"news": "rss", "other": "rss", "cisa-kev": "cisa_kev", "nvd-critical": "nvd"}
+CVE = "CVE-2026-87902"
+
+
+def test_group_primary_is_the_most_important_news_then_the_oldest():
+    arts = [
+        _art(587, [CVE], importance=8, published_at="2026-09-22T08:00:00+00:00"),  # first, not exploited yet
+        _art(1626, [CVE], importance=9, published_at="2026-09-23T09:00:00+00:00"),
+        _art(5615, [CVE], importance=9, published_at="2026-09-23T11:00:00.5+00:00"),
+    ]
+    assert plan_group(arts, KINDS) == (1626, [587, 5615])
+
+
+def test_kev_and_nvd_items_are_members_never_primary_while_there_is_news():
+    arts = [_art(186, [CVE], importance=9, source_id="cisa-kev"), _art(511, [CVE], importance=8)]
+    assert plan_group(arts, KINDS) == (511, [186])
+    # Only structured items: they still group among themselves.
+    arts = [_art(186, [CVE], importance=9, source_id="cisa-kev"), _art(219, [CVE], importance=6, source_id="nvd-critical")]
+    assert plan_group(arts, KINDS) == (186, [219])
+
+
+def test_roundups_and_lone_items_are_not_grouped():
+    many = [f"CVE-2026-1000{i}" for i in range(4)]
+    assert plan_group([_art(20, many + [CVE]), _art(1626, [CVE])], KINDS) is None  # 5 CVEs: a digest
+    assert plan_group([_art(1626, [CVE])], KINDS) is None
+    assert not groupable(_art(1, []))
+
+
+def test_collect_groups_results_that_share_a_cve(monkeypatch):
+    from datetime import UTC, datetime
+
+    from collector import ai, pipeline
+
+    results = {
+        7143: AIResult.model_validate(_ai(importance=8, cves=["CVE-2026-94127"])),
+        511: AIResult.model_validate(_ai(importance=9, cves=["CVE-2026-94127"])),
+    }
+    monkeypatch.setattr(ai, "collect_batch", lambda client, batch_id: ai.BatchOutcome(ended=True, results=results))
+    stored = {186: _art(186, ["CVE-2026-94127"], importance=9, source_id="cisa-kev")}
+    regroups = []
+
+    class FakeDB:
+        def open_batches(self):
+            return [{"id": "b1", "model": "m"}]
+
+        def ai_inputs(self, ids):
+            return {}
+
+        def kev_cves(self, cves):
+            return set()
+
+        def save_ai_result(self, article_id, row, model, now):
+            stored[article_id] = _art(article_id, row["cves"], importance=row["importance"])
+
+        def cve_group_candidates(self, cves, since):
+            return [a for a in stored.values() if set(a["cves"]) & set(cves)]
+
+        def regroup(self, primary_id, member_ids):
+            regroups.append((primary_id, member_ids))
+
+        def close_batch(self, *args):
+            pass
+
+    stats = pipeline.collect_finished_batches(FakeDB(), None, CFG, datetime.now(UTC), KINDS)
+    # 7143 first joins the KEV item as primary; then 511 (more important) takes over.
+    assert regroups == [(7143, [186]), (511, [186, 7143])]
+    assert stats["grouped"] == 2

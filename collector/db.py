@@ -124,6 +124,21 @@ class DB:
             row | self._TRANSIENT | {"status": "done", "model": model, "processed_at": now.isoformat(), "last_error": None}
         ).eq("id", article_id).execute()
 
+    def cve_group_candidates(self, cves: list[str], since: datetime) -> list[dict]:
+        """Processed articles fetched since `since` that mention any of `cves`."""
+        return (
+            self.table("articles")
+            .select("id,source_id,importance,published_at,fetched_at,cves")
+            .eq("status", "done").ov("cves", cves).gte("fetched_at", since.isoformat())
+            .order("id").limit(200).execute().data
+        )
+
+    def regroup(self, primary_id: int, member_ids: list[int]) -> None:
+        """Point the members (and whatever pointed at them) to the primary."""
+        self.table("articles").update({"duplicate_of": primary_id}).in_("duplicate_of", member_ids).execute()
+        self.table("articles").update({"duplicate_of": primary_id}).in_("id", member_ids).execute()
+        self.table("articles").update({"duplicate_of": None}).eq("id", primary_id).execute()
+
     def ai_failed(self, article_id: int, error: str, attempts: int, max_attempts: int) -> None:
         status = "failed" if attempts >= max_attempts else "pending"
         update = {"status": status, "attempts": attempts, "last_error": error[:1000], "batch_id": None}
