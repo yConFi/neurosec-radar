@@ -9,7 +9,7 @@ type Client = SupabaseClient<Database>
 export const PAGE_SIZE = 30
 const CARD_COLUMNS =
   "id,url,title,sort_at,source_id,source_name,category,subtopics,importance,highlight," +
-  "is_curious,summary_es,cves,is_urgent,urgent_reason,read_at,favorite,note"
+  "is_curious,summary_es,cves,is_urgent,urgent_reason,read_at,favorite,note,image_url"
 
 export const PERIODS = {
   "24h": { label: "Últimas 24 h", hours: 24 },
@@ -64,7 +64,7 @@ export type Card = Pick<
   FeedRow,
   | "id" | "url" | "title" | "sort_at" | "source_id" | "source_name" | "category" | "subtopics"
   | "importance" | "highlight" | "is_curious" | "summary_es" | "cves" | "is_urgent"
-  | "urgent_reason" | "read_at" | "favorite" | "note"
+  | "urgent_reason" | "read_at" | "favorite" | "note" | "image_url"
 >
 
 /** Transcendental items stay pinned until marked as read. */

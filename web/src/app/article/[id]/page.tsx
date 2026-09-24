@@ -3,10 +3,11 @@ import { notFound } from "next/navigation"
 
 import { saveNote } from "@/app/actions"
 import { ActionRequired, CategoryBadge, ImportanceBadge, SubtopicList } from "@/components/badges"
+import { ExternalFigure, ExternalImage } from "@/components/external-image"
 import { Header } from "@/components/header"
 import { FavoriteButton, ReadButton } from "@/components/state-buttons"
 import { getArticle } from "@/lib/feed"
-import { formatDate, safeUrl } from "@/lib/format"
+import { formatDate, parseFigures, safeUrl } from "@/lib/format"
 import { requireUser } from "@/lib/supabase/server"
 
 export default async function ArticlePage({ params }: PageProps<"/article/[id]">) {
@@ -19,6 +20,9 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
   if (!result) notFound()
   const { article: a, vulnerabilities, alsoIn } = result
   const external = safeUrl(a.url)
+  const paragraphs = (a.detail_es ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  const keyPoints = a.key_points ?? []
+  const figures = parseFigures(a.figures)
 
   return (
     <>
@@ -46,7 +50,37 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
             </div>
           )}
 
-          <p className="text-base leading-relaxed">{a.summary_es}</p>
+          <ExternalImage src={a.image_url} alt="" className="max-h-96 w-full rounded-xl object-cover" />
+
+          <p className="text-base font-medium leading-relaxed">{a.summary_es}</p>
+
+          {paragraphs.length > 0 && (
+            <div className="space-y-3 text-base leading-relaxed text-zinc-700 dark:text-zinc-300">
+              {paragraphs.map((p, i) => (
+                <p key={i}>{p}</p>
+              ))}
+            </div>
+          )}
+
+          {keyPoints.length > 0 && (
+            <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Puntos clave</h2>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed">
+                {keyPoints.map((point, i) => (
+                  <li key={i}>{point}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {figures.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Figuras de la fuente</h2>
+              {figures.map((f, i) => (
+                <ExternalFigure key={f.url} src={f.url} caption={f.caption} label={`Figura ${i + 1}`} />
+              ))}
+            </section>
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <SubtopicList subtopics={a.subtopics} />

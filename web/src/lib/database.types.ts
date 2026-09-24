@@ -68,18 +68,24 @@ export type Database = {
           attempts: number
           author: string | null
           batch_id: string | null
+          body: string | null
           category: string | null
           content: string | null
           cves: string[]
+          detail_es: string | null
           duplicate_of: number | null
           external_id: string | null
           extra: Json
           fetched_at: string
+          figures: Json
           highlight: string | null
           id: number
+          image_candidates: string[]
+          image_url: string | null
           importance: number | null
           is_curious: boolean | null
           is_urgent: boolean | null
+          key_points: string[]
           lang: string
           last_error: string | null
           model: string | null
@@ -163,15 +169,19 @@ export type Database = {
         Row: {
           category: string | null
           cves: string[] | null
+          detail_es: string | null
           external_id: string | null
           extra: Json | null
           favorite: boolean | null
           fetched_at: string | null
+          figures: Json | null
           highlight: string | null
           id: number | null
+          image_url: string | null
           importance: number | null
           is_curious: boolean | null
           is_urgent: boolean | null
+          key_points: string[] | null
           lang: string | null
           note: string | null
           published_at: string | null

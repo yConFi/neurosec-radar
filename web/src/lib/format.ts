@@ -55,6 +55,19 @@ export function timeAgo(iso: string | null | undefined, now: number = Date.now()
   return formatDate(iso)
 }
 
+export type Figure = { url: string; caption: string }
+
+/** articles.figures is untyped jsonb: keep only well-formed https entries. */
+export function parseFigures(value: unknown): Figure[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((f) =>
+    f && typeof f === "object" && typeof f.url === "string" && typeof f.caption === "string" &&
+    safeUrl(f.url)?.startsWith("https://")
+      ? [{ url: f.url, caption: f.caption }]
+      : [],
+  )
+}
+
 /** Feed URLs are third-party data: only allow http(s) links (blocks javascript:, data:, ...). */
 export function safeUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined
