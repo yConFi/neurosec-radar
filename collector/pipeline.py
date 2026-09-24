@@ -77,6 +77,7 @@ def collect_finished_batches(
                 in_kev=bool(in_kev.intersection(result.cves)),  # CISA KEV beats the model's reading
             )
             # articles.highlight ('major' / 'top') is derived by Postgres from importance
+            # (the feed view blanks it for KEV/NVD items: they never make highlights)
             db.save_ai_result(article_id, row, batch["model"], now)
             stats["done"] += 1
             if grouping.groupable(row):
