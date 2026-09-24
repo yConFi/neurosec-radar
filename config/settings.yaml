@@ -3,7 +3,10 @@
 collector:
   max_age_days: 3            # skip items older than this (avoids back-filling whole archives)
   max_items_per_source: 50   # newest N entries per feed and run
-  max_content_chars: 2500    # plain-text snippet stored and sent to the AI (~600 tokens)
+  max_content_chars: 2500    # plain-text snippet from the feed (kept in articles.content)
+  max_body_chars: 6000       # full-page text sent to the AI instead (~1500 tokens), then deleted
+  page_timeout_s: 15         # article page download (new RSS items only, once, no retries)
+  page_max_bytes: 3000000
   http_timeout_s: 20
   user_agent: "Mozilla/5.0 (compatible; neurosec-radar/0.1; +https://github.com/yConFi/neurosec-radar)"
 
@@ -14,7 +17,7 @@ dedup:
 
 ai:
   model: claude-haiku-4-5
-  max_tokens: 1024
+  max_tokens: 2048           # room for detail_es + key_points on important items
   max_per_batch: 300         # cost guard-rail per run
   max_attempts: 3            # after this, the article stays in status 'failed'
 

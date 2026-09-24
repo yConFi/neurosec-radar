@@ -37,6 +37,17 @@ def canonical_url(url: str) -> str:
     return urlunsplit((scheme, netloc, path, query, ""))
 
 
+def https_url(url: str | None, max_len: int = 2048) -> str | None:
+    """Third-party URL we will render (e.g. an image): https only, bounded length."""
+    if not url:
+        return None
+    url = html.unescape(url.strip())
+    parts = urlsplit(url)
+    if parts.scheme.lower() != "https" or not parts.netloc or len(url) > max_len:
+        return None
+    return url
+
+
 class _TextExtractor(HTMLParser):
     _SKIP = {"script", "style", "noscript"}
 

@@ -65,7 +65,7 @@ class DB:
                 "source_id": it.source_id, "url": it.url, "title": it.title[:1000],
                 "title_norm": title_norm(it.title), "content": it.content, "author": it.author,
                 "lang": it.lang, "published_at": _iso(it.published_at), "external_id": it.external_id,
-                "extra": it.extra,
+                "image_url": it.image_url, "extra": it.extra,
             }
             for it in items
         ]
@@ -87,10 +87,14 @@ class DB:
         for dup_id, original_id in duplicates.items():
             self.table("articles").update({"status": "duplicate", "duplicate_of": original_id}).eq("id", dup_id).execute()
 
+    def save_pages(self, pages: dict[int, dict]) -> None:
+        for article_id, update in pages.items():
+            self.table("articles").update(update).eq("id", article_id).execute()
+
     def pending_articles(self, limit: int) -> list[dict]:
         return (
             self.table("articles")
-            .select("id,source_id,title,content,lang,published_at,attempts,extra")
+            .select("id,source_id,title,content,body,lang,published_at,attempts,extra")
             .eq("status", "pending").order("id").limit(limit).execute().data
         )
 
@@ -100,20 +104,31 @@ class DB:
             out.extend(self.table("articles").select("id,title,source_id,attempts").in_("id", chunk).execute().data)
         return out
 
+    def image_candidates(self, ids: list[int]) -> dict[int, list[str]]:
+        out: dict[int, list[str]] = {}
+        for chunk in _chunks(ids, 200):
+            rows = self.table("articles").select("id,image_candidates").in_("id", chunk).execute().data
+            out.update({r["id"]: r["image_candidates"] or [] for r in rows})
+        return out
+
     def mark_queued(self, ids: list[int], batch_id: str) -> None:
         for chunk in _chunks(ids, 200):
             self.table("articles").update({"status": "queued", "batch_id": batch_id}).in_("id", chunk).execute()
 
-    def save_ai_result(self, article_id: int, result: dict, model: str, now: datetime) -> None:
+    # Page text and image candidates were only needed by the AI: drop them to save space.
+    _TRANSIENT = {"body": None, "image_candidates": []}
+
+    def save_ai_result(self, article_id: int, row: dict, model: str, now: datetime) -> None:
         self.table("articles").update(
-            result | {"status": "done", "model": model, "processed_at": now.isoformat(), "last_error": None}
+            row | self._TRANSIENT | {"status": "done", "model": model, "processed_at": now.isoformat(), "last_error": None}
         ).eq("id", article_id).execute()
 
     def ai_failed(self, article_id: int, error: str, attempts: int, max_attempts: int) -> None:
         status = "failed" if attempts >= max_attempts else "pending"
-        self.table("articles").update(
-            {"status": status, "attempts": attempts, "last_error": error[:1000], "batch_id": None}
-        ).eq("id", article_id).execute()
+        update = {"status": status, "attempts": attempts, "last_error": error[:1000], "batch_id": None}
+        if status == "failed":  # no more retries
+            update |= self._TRANSIENT
+        self.table("articles").update(update).eq("id", article_id).execute()
 
     # ---------------------------------------------------------- AI batches
     def create_batch(self, batch_id: str, model: str, request_count: int) -> None:

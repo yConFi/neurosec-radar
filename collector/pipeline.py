@@ -4,6 +4,7 @@ Order matters:
   1. collect finished AI batches (results reach the DB as early as possible)
   2. fetch every source concurrently
   3. insert articles (UNIQUE url) + mark near-duplicate titles
+     + download the page of each new RSS article (full text for the AI, image)
   4. upsert CVE facts (KEV + NVD)
   5. submit a new AI batch with the pending articles
   6. save source health + HTTP cache headers (only now: if anything above
@@ -19,7 +20,7 @@ from typing import Any
 
 import anthropic
 
-from . import ai
+from . import ai, page
 from .config import Source, env, load_sources, settings
 from .db import DB
 from .dedup import find_duplicates
@@ -63,9 +64,10 @@ def collect_finished_batches(db: DB, client: anthropic.Anthropic, cfg: dict, now
         if not outcome.ended:
             continue
         stats["batches"] += 1
+        candidates = db.image_candidates(list(outcome.results))
         for article_id, result in outcome.results.items():
             # articles.highlight ('major' / 'top') is derived by Postgres from importance
-            db.save_ai_result(article_id, result.model_dump(), batch["model"], now)
+            db.save_ai_result(article_id, result.to_row(candidates.get(article_id, [])), batch["model"], now)
             stats["done"] += 1
         if outcome.failures:
             attempts = {a["id"]: a["attempts"] for a in db.articles_by_ids(list(outcome.failures))}
@@ -118,6 +120,16 @@ def run(*, dry_run: bool = False, skip_ai: bool = False) -> int:
         duplicates = find_duplicates(dedupable, existing, threshold=d["title_similarity"], min_len=d["min_title_len"])
         db.mark_duplicates(duplicates)
         stats["articles"] = {"fetched": len(items), "inserted": len(inserted), "duplicates": len(duplicates)}
+
+        # 3b. full page text + image for the new RSS articles (feeds mostly carry a teaser)
+        to_enrich = [r for r in inserted if kind_of[r["source_id"]] == "rss" and r["id"] not in duplicates]
+        pages = page.enrich(to_enrich, cfg)
+        db.save_pages(pages)
+        stats["pages"] = {
+            "tried": len(to_enrich),
+            "body": sum("body" in u for u in pages.values()),
+            "image": sum(bool(u.get("image_url")) for u in pages.values()),
+        }
 
         # 4. CVE facts (shown next to articles and used by the CVE filter)
         db.upsert_vulnerabilities(vulns)

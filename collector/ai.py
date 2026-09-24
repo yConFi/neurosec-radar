@@ -43,6 +43,9 @@ SUBTOPICS = (
 )
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CUSTOM_ID = "article-{}"
+DETAIL_MIN_IMPORTANCE = 6  # below this, no detail_es / key_points / figures (saves output tokens)
+MAX_KEY_POINTS = 5
+MAX_FIGURES = 3
 
 SYSTEM_PROMPT = f"""You are the analyst behind NeuroSec Radar, a personal news radar for a Spanish \
 practitioner who follows cybersecurity, AI, and the intersection of both. For each item you \
@@ -80,6 +83,25 @@ however high its CVSS. Raw CVE records (source NVD) usually belong in 4-7. Use <
 (prompt injection, exploit, RCE, zero-day, jailbreak, backdoor, patch, ransomware, LLM, etc.), but \
 write everything else in Spanish: no stray English words that are not technical terms. Lead with \
 what happened and why it matters. No marketing tone and no preamble such as "El artículo...".
+- detail_es: only when importance >= {DETAIL_MIN_IMPORTANCE} AND the content has substantive detail beyond \
+the summary; otherwise "". Two or three short paragraphs (120-250 words in total, separated by a \
+blank line), same language rules as summary_es, that do NOT repeat the summary: context, technical \
+details (affected products and versions, attack vector, threat actor, figures, how the model or \
+tool works) and consequences. Keep every figure attached to exactly what the text says it \
+measures; never merge separate facts into one claim. If the content is only a short teaser, leave \
+it "" rather than pad or guess.
+- key_points: when detail_es is not empty, 3-{MAX_KEY_POINTS} short Spanish bullet points (max ~20 \
+words each, no leading dash) with the facts a practitioner would note down: affected versions, fixed \
+version or patch, mitigations, indicators, availability, prices. Empty list otherwise.
+- figures: the content may contain [FIG n: "alt text"] markers where the page had an image; the \
+text right after a marker is often its caption. When detail_es is not empty, choose up to \
+{MAX_FIGURES} figures that carry information: charts, tables, diagrams, attack chains, timelines, \
+maps, or screenshots that are evidence (code, phishing page, malicious UI, PoC output). Never pick \
+decorative or stock images, logos, product shots, photos of people or authors, ads, or thumbnails \
+of other articles. When unsure, leave it out. For each: index = n, and caption_es = the image's own \
+alt text/caption translated into Spanish, keeping the credit if there is one (e.g. "Tarjetas robadas. \
+Fuente: Gambit"). You cannot see the image: add only what the surrounding text explicitly says the \
+image shows, never guess its content or format. Empty list when there is nothing worth it.
 - cves: CVE identifiers that literally appear in the text, format CVE-YYYY-NNNN+. Empty list if none.
 - is_urgent: true only if a security practitioner should act within 24 hours: there is evidence \
 of active exploitation or a public exploit AND the affected software is widely deployed. A high \
@@ -96,13 +118,32 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "importance": {"type": "integer"},  # 1-10 enforced below (schema min/max unsupported)
         "is_curious": {"type": "boolean"},
         "summary_es": {"type": "string"},
+        "detail_es": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "figures": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"index": {"type": "integer"}, "caption_es": {"type": "string"}},
+                "required": ["index", "caption_es"],
+                "additionalProperties": False,
+            },
+        },
         "cves": {"type": "array", "items": {"type": "string"}},
         "is_urgent": {"type": "boolean"},
         "urgent_reason": {"type": "string"},
     },
-    "required": ["category", "subtopics", "importance", "is_curious", "summary_es", "cves", "is_urgent", "urgent_reason"],
+    "required": [
+        "category", "subtopics", "importance", "is_curious", "summary_es", "detail_es", "key_points",
+        "figures", "cves", "is_urgent", "urgent_reason",
+    ],
     "additionalProperties": False,
 }
+
+
+class Figure(BaseModel):
+    index: int
+    caption_es: str
 
 
 class AIResult(BaseModel):
@@ -113,6 +154,9 @@ class AIResult(BaseModel):
     importance: int
     is_curious: bool
     summary_es: str
+    detail_es: str
+    key_points: list[str]
+    figures: list[Figure]
     cves: list[str]
     is_urgent: bool
     urgent_reason: str
@@ -139,11 +183,45 @@ class AIResult(BaseModel):
             raise ValueError("empty summary")
         return v.strip()
 
+    @field_validator("key_points")
+    @classmethod
+    def _clean_key_points(cls, v: list[str]) -> list[str]:
+        return [p.strip().lstrip("-•* ").strip() for p in v if p.strip()][:MAX_KEY_POINTS]
+
+    @field_validator("figures")
+    @classmethod
+    def _clean_figures(cls, v: list[Figure]) -> list[Figure]:
+        seen: set[int] = set()
+        out = []
+        for f in v:
+            caption = f.caption_es.strip()
+            if f.index >= 1 and caption and f.index not in seen:
+                seen.add(f.index)
+                out.append(Figure(index=f.index, caption_es=caption))
+        return out[:MAX_FIGURES]
+
     @model_validator(mode="after")
     def _reason_only_if_urgent(self) -> "AIResult":
         if not self.is_urgent:
             self.urgent_reason = ""
         return self
+
+    @model_validator(mode="after")
+    def _detail_only_if_important(self) -> "AIResult":
+        self.detail_es = self.detail_es.strip()
+        if self.importance < DETAIL_MIN_IMPORTANCE or not self.detail_es:
+            self.detail_es, self.key_points, self.figures = "", [], []
+        return self
+
+    def to_row(self, image_candidates: list[str]) -> dict[str, Any]:
+        """DB columns. Figure indexes become URLs; an index the collector never offered is dropped."""
+        row = self.model_dump(exclude={"figures"})
+        row["figures"] = [
+            {"url": image_candidates[f.index - 1], "caption": f.caption_es}
+            for f in self.figures
+            if f.index <= len(image_candidates)
+        ]
+        return row
 
 
 def build_facts(article: dict, source: Source | None) -> str | None:
@@ -176,7 +254,8 @@ def build_user_message(article: dict, source: Source | None) -> str:
         f"<published>{(article.get('published_at') or '')[:10]}</published>\n"
         + (f"<facts>{esc(facts)}</facts>\n" if facts else "")
         + f"<title>{esc(article['title'])}</title>\n"
-        f"<content>{esc(article.get('content'))}</content>\n"
+        # full page text when the collector could fetch it, else the feed snippet
+        f"<content>{esc(article.get('body') or article.get('content'))}</content>\n"
         "</article>"
     )
 

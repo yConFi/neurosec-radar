@@ -7,5 +7,6 @@ python-dotenv==1.2.3
 PyYAML==6.0.3
 RapidFuzz==3.14.6
 supabase==2.31.0
+trafilatura==2.2.0
 # Dev
 pytest==9.1.1

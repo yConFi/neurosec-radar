@@ -19,6 +19,7 @@ class RawItem:
     author: str | None = None
     published_at: datetime | None = None
     external_id: str | None = None
+    image_url: str | None = None  # lead image offered by the feed itself
     extra: dict[str, Any] = field(default_factory=dict)
 
 

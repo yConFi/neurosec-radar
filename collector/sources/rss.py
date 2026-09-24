@@ -11,8 +11,10 @@ import httpx
 
 from ..config import Source
 from ..models import FetchResult, RawItem
-from ..normalize import canonical_url, html_to_text, struct_time_to_dt, truncate
+from ..normalize import canonical_url, html_to_text, https_url, struct_time_to_dt, truncate
 from . import http
+
+_IMG_SRC = re.compile(r"""<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']""", re.I)
 
 
 def fetch_feed(client: httpx.Client, source: Source, state: dict[str, Any]):
@@ -37,6 +39,21 @@ def _entry_text(entry) -> str:
     if entry.get("content"):
         return html_to_text(entry["content"][0].get("value"))
     return html_to_text(entry.get("summary"))
+
+
+def _is_image(media: dict) -> bool:
+    kind = media.get("medium") or media.get("type") or "image"  # untyped media is usually an image
+    return kind == "image" or kind.startswith("image/")
+
+
+def entry_image(entry) -> str | None:
+    """Lead image the feed itself offers: Media RSS, image enclosure or first <img> in the HTML."""
+    candidates = [m.get("url") for m in entry.get("media_content", []) if _is_image(m)]
+    candidates += [m.get("url") for m in entry.get("media_thumbnail", [])]
+    candidates += [e.get("href") for e in entry.get("enclosures", []) if e.get("type", "").startswith("image/")]
+    for html in [c.get("value", "") for c in entry.get("content", [])] + [entry.get("summary", "")]:
+        candidates += _IMG_SRC.findall(html or "")
+    return next((url for url in map(https_url, candidates) if url), None)
 
 
 def fetch_rss(client: httpx.Client, source: Source, state: dict[str, Any], cfg: dict, now: datetime) -> FetchResult:
@@ -66,6 +83,7 @@ def fetch_rss(client: httpx.Client, source: Source, state: dict[str, Any], cfg: 
                 content=truncate(_entry_text(entry), c["max_content_chars"]) or None,
                 author=entry.get("author"),
                 published_at=published,
+                image_url=entry_image(entry),
             )
         )
     result.stats = {"entries": len(feed.entries), "kept": len(result.items), "too_old": too_old}

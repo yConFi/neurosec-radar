@@ -115,3 +115,22 @@ def test_parse_cve_fields():
     assert parse_cve(_nvd(status="Rejected")) is None
     # Without cisaExploitAdd, NVD must not write in_kev at all (None -> column untouched)
     assert parse_cve(_nvd()).to_row().get("in_kev") is None
+
+
+# ------------------------------------------------------------ feed images
+def test_entry_image_prefers_media_and_requires_https():
+    import feedparser
+
+    from collector.sources.rss import entry_image
+
+    xml = """<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>
+<item><title>a</title><media:content url="https://cdn.ex.com/video.mp4" medium="video"/>
+<media:thumbnail url="https://cdn.ex.com/thumb.jpg"/></item>
+<item><title>b</title><enclosure url="http://ex.com/plain.jpg" type="image/jpeg" length="1"/>
+<description>&lt;p&gt;&lt;img src="https://ex.com/in-body.png?a=1&amp;amp;b=2"&gt;&lt;/p&gt;</description></item>
+<item><title>c</title><description>no image</description></item>
+</channel></rss>"""
+    a, b, c = feedparser.parse(xml).entries
+    assert entry_image(a) == "https://cdn.ex.com/thumb.jpg"  # video skipped
+    assert entry_image(b) == "https://ex.com/in-body.png?a=1&b=2"  # http enclosure rejected
+    assert entry_image(c) is None

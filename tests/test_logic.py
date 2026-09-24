@@ -37,7 +37,8 @@ def test_find_duplicates_subset_title_is_not_a_duplicate():
 # ---------------------------------------------------------------------- AI
 def _ai(**kw) -> dict:
     base = dict(category="cyber", subtopics=["exploit"], importance=7, is_curious=False,
-                summary_es="Resumen.", cves=[], is_urgent=False, urgent_reason="")
+                summary_es="Resumen.", detail_es="", key_points=[], figures=[], cves=[], is_urgent=False,
+                urgent_reason="")
     return base | kw
 
 
@@ -62,6 +63,45 @@ def test_ai_result_rejects_bad_category_and_empty_summary():
         AIResult.model_validate(_ai(category="sports"))
     with pytest.raises(ValidationError):
         AIResult.model_validate(_ai(summary_es="   "))
+
+
+def test_detail_is_kept_only_for_important_items():
+    points = ["- Afecta a 1.2", "  ", "• Parche en 1.3", "a", "b", "c", "d"]
+    r = AIResult.model_validate(_ai(importance=6, detail_es="  Contexto.  ", key_points=points))
+    assert r.detail_es == "Contexto."
+    assert r.key_points == ["Afecta a 1.2", "Parche en 1.3", "a", "b", "c"]
+    low = AIResult.model_validate(_ai(importance=5, detail_es="Contexto.", key_points=["x"]))
+    assert (low.detail_es, low.key_points) == ("", [])
+    no_detail = AIResult.model_validate(_ai(importance=9, detail_es=" ", key_points=["x"],
+                                            figures=[{"index": 1, "caption_es": "Gráfica"}]))
+    assert no_detail.key_points == [] and no_detail.figures == []
+
+
+def test_figures_are_sanitised_and_mapped_to_urls():
+    figures = [
+        {"index": 2, "caption_es": " Tarjetas robadas por país. Fuente: Gambit "},
+        {"index": 2, "caption_es": "duplicada"},
+        {"index": 0, "caption_es": "índice imposible"},
+        {"index": 1, "caption_es": "  "},
+        {"index": 9, "caption_es": "nunca ofrecida"},
+        {"index": 3, "caption_es": "c"},
+        {"index": 4, "caption_es": "d"},  # 4th valid one -> over MAX_FIGURES
+    ]
+    r = AIResult.model_validate(_ai(detail_es="Contexto.", figures=figures))
+    assert [f.index for f in r.figures] == [2, 9, 3]
+    row = r.to_row(["https://x/1.png", "https://x/2.png", "https://x/3.png"])
+    assert row["figures"] == [
+        {"url": "https://x/2.png", "caption": "Tarjetas robadas por país. Fuente: Gambit"},
+        {"url": "https://x/3.png", "caption": "c"},
+    ]
+    assert "detail_es" in row and "figures" in OUTPUT_SCHEMA["required"]
+
+
+def test_user_message_prefers_full_page_body():
+    article = {"id": 1, "source_id": "x", "lang": "en", "title": "t", "published_at": None,
+               "content": "teaser", "body": "full page text"}
+    assert "<content>full page text</content>" in build_user_message(article, None)
+    assert "<content>teaser</content>" in build_user_message(article | {"body": None}, None)
 
 
 def test_user_message_escapes_injected_tags():
