@@ -55,16 +55,7 @@ export async function POST(request: Request) {
   if (!question) return fail(400, "Escribe una pregunta.")
   if (question.length > MAX_QUESTION_CHARS) return fail(400, `Máximo ${MAX_QUESTION_CHARS} caracteres.`)
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    // TEMPORARY diagnostic: variable NAMES and deployment env only, never values.
-    console.warn("chat: ANTHROPIC_API_KEY missing", {
-      vercelEnv: process.env.VERCEL_ENV,
-      targetEnv: process.env.VERCEL_TARGET_ENV,
-      defined: "ANTHROPIC_API_KEY" in process.env,
-      similarNames: Object.keys(process.env).filter((k) => /ANTHROPIC|SUPABASE/i.test(k)),
-    })
-    return fail(503, "Falta configurar ANTHROPIC_API_KEY en Vercel.")
-  }
+  if (!process.env.ANTHROPIC_API_KEY) return fail(503, "Falta configurar ANTHROPIC_API_KEY en Vercel.")
 
   const context = await getChatContext(supabase, id)
   if (!context) return fail(404, "Noticia no encontrada.")
