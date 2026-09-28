@@ -14,6 +14,8 @@ NeuroSec Radar pulls news from 30 sources (security and AI outlets in English an
 | **Chat with Claude about the article** (owner only) | **Weekly digest** |
 | ![Streaming chat about an article](docs/screenshots/chat.png) | ![Weekly digest with overview and top stories](docs/screenshots/weekly.png) |
 
+<p align="center"><img src="docs/screenshots/mobile.png" alt="Highlights on a phone" width="300"></p>
+
 *The interface is in Spanish, the language of the summaries.*
 
 ## Features
@@ -126,4 +128,4 @@ tests/                pytest suite (collector logic, AI output validation, weekl
 
 ---
 
-Built by Ricardo ([@yConFi](https://github.com/yConFi)).
+Built by Ricardo ([@yConFi](https://github.com/yConFi)), developed together with [Claude Code](https://claude.com/claude-code).
