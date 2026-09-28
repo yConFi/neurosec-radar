@@ -7,7 +7,15 @@ const field =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
 
 // GET form: filters live in the URL (shareable, back button works, no client JS).
-export function FiltersForm({ filters, sources }: { filters: Filters; sources: { id: string; name: string }[] }) {
+export function FiltersForm({
+  filters,
+  sources,
+  owner,
+}: {
+  filters: Filters
+  sources: { id: string; name: string }[]
+  owner: boolean
+}) {
   return (
     <form method="get" action="/" className="flex flex-wrap items-end gap-2">
       <input
@@ -56,11 +64,13 @@ export function FiltersForm({ filters, sources }: { filters: Filters; sources: {
         aria-label="CVE"
         className={`${field} w-36 font-mono`}
       />
-      <select name="estado" defaultValue={filters.estado} aria-label="Estado" className={field}>
-        <option value="">Todo</option>
-        <option value="unread">No leídos</option>
-        <option value="fav">Favoritos</option>
-      </select>
+      {owner && (
+        <select name="estado" defaultValue={filters.estado} aria-label="Estado" className={field}>
+          <option value="">Todo</option>
+          <option value="unread">No leídos</option>
+          <option value="fav">Favoritos</option>
+        </select>
+      )}
       <button
         type="submit"
         className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"

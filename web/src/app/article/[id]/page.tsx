@@ -10,17 +10,19 @@ import { FavoriteButton, ReadButton } from "@/components/state-buttons"
 import { MAX_QUESTION_CHARS, MAX_QUESTIONS_PER_ARTICLE, getChatHistory } from "@/lib/chat"
 import { getArticle } from "@/lib/feed"
 import { formatDate, parseFigures, safeUrl } from "@/lib/format"
-import { requireUser } from "@/lib/supabase/server"
+import { getViewer } from "@/lib/supabase/server"
 
 export default async function ArticlePage({ params }: PageProps<"/article/[id]">) {
   const { id: rawId } = await params
   const id = Number(rawId)
   if (!Number.isSafeInteger(id) || id <= 0) notFound()
 
-  const { supabase, email } = await requireUser()
+  const { supabase, user } = await getViewer()
+  const owner = Boolean(user)
+  // Chat and notes are owner-only: a public visitor never queries them.
   const [result, chat] = await Promise.all([
-    getArticle(supabase, id),
-    getChatHistory(supabase, id, MAX_QUESTIONS_PER_ARTICLE * 2),
+    getArticle(supabase, id, owner),
+    owner ? getChatHistory(supabase, id, MAX_QUESTIONS_PER_ARTICLE * 2) : Promise.resolve([]),
   ])
   if (!result) notFound()
   const { article: a, vulnerabilities, alsoIn, groupedIn } = result
@@ -31,7 +33,7 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
 
   return (
     <>
-      <Header email={email} />
+      <Header email={user?.email} signedIn={owner} />
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Volver
@@ -116,8 +118,12 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
                 Leer en la fuente ↗
               </a>
             )}
-            <FavoriteButton id={id} favorite={Boolean(a.favorite)} />
-            <ReadButton id={id} read={Boolean(a.read_at)} />
+            {owner && (
+              <>
+                <FavoriteButton id={id} favorite={Boolean(a.favorite)} />
+                <ReadButton id={id} read={Boolean(a.read_at)} />
+              </>
+            )}
           </div>
         </article>
 
@@ -177,32 +183,36 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
           </section>
         )}
 
-        <ArticleChat
-          articleId={id}
-          initial={chat.map(({ role, content }) => ({ role, content }))}
-          maxChars={MAX_QUESTION_CHARS}
-        />
-
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Mi nota</h2>
-          <form action={saveNote} className="space-y-2">
-            <input type="hidden" name="id" value={id} />
-            <textarea
-              name="note"
-              defaultValue={a.note ?? ""}
-              rows={5}
-              maxLength={10000}
-              placeholder="Apuntes, ideas, qué revisar…"
-              className="w-full rounded-lg border border-zinc-300 bg-white p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+        {owner && (
+          <>
+            <ArticleChat
+              articleId={id}
+              initial={chat.map(({ role, content }) => ({ role, content }))}
+              maxChars={MAX_QUESTION_CHARS}
             />
-            <button
-              type="submit"
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              Guardar nota
-            </button>
-          </form>
-        </section>
+
+            <section className="space-y-2">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Mi nota</h2>
+              <form action={saveNote} className="space-y-2">
+                <input type="hidden" name="id" value={id} />
+                <textarea
+                  name="note"
+                  defaultValue={a.note ?? ""}
+                  rows={5}
+                  maxLength={10000}
+                  placeholder="Apuntes, ideas, qué revisar…"
+                  className="w-full rounded-lg border border-zinc-300 bg-white p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                />
+                <button
+                  type="submit"
+                  className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
+                >
+                  Guardar nota
+                </button>
+              </form>
+            </section>
+          </>
+        )}
       </main>
     </>
   )

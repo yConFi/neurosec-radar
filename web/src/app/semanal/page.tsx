@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import { CategoryBadge, ImportanceBadge } from "@/components/badges"
 import { Header } from "@/components/header"
 import { formatDate } from "@/lib/format"
-import { requireUser } from "@/lib/supabase/server"
+import { getViewer } from "@/lib/supabase/server"
 import { type DigestArticle, getDigest, listDigests, weekLabel } from "@/lib/weekly"
 
 function ArticleLink({ article }: { article: DigestArticle | undefined }) {
@@ -17,18 +17,19 @@ function ArticleLink({ article }: { article: DigestArticle | undefined }) {
 }
 
 export default async function WeeklyPage({ searchParams }: PageProps<"/semanal">) {
-  const { supabase, email } = await requireUser()
+  const { supabase, user } = await getViewer()
+  const owner = Boolean(user)
   const raw = (await searchParams).semana
   const requested = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null
 
   const weeks = await listDigests(supabase)
   const weekStart = requested ?? weeks.find((w) => w.status === "done")?.week_start ?? weeks[0]?.week_start
-  const result = weekStart ? await getDigest(supabase, weekStart) : null
+  const result = weekStart ? await getDigest(supabase, weekStart, owner) : null
   if (requested && !result) notFound()
 
   return (
     <>
-      <Header email={email} />
+      <Header email={user?.email} signedIn={owner} />
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
         <div className="flex flex-wrap items-baseline gap-3">
           <h1 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Resumen semanal</h1>

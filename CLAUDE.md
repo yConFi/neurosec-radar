@@ -18,7 +18,8 @@ Autor: Ricardo (GitHub `yConFi`). Repo: `yConFi/neurosec-radar` (**público**, t
 | IA | API de Anthropic, **Claude Haiku 4.5** vía **Message Batches API** (−50 %; resultados en ~30–60 min). Presupuesto orientativo: 4–8 $/mes |
 | arXiv | Solo "Announce Type: new" + palabras clave (`config/settings.yaml`), ~35–40 papers/día |
 | Base de datos | Supabase (plan Free: 500 MB; pausa el proyecto tras 1 semana sin actividad). Proyecto `neurosec-radar`, región eu-west-3 |
-| Web | Next.js en Vercel (Hobby), login con Supabase Auth, **un único usuario** (Ricardo) |
+| Web | Next.js en Vercel (Hobby). **Demo pública de solo lectura** sin cuenta (feed, destacados, detalle, resumen semanal). Login con Supabase Auth para **un único usuario** (Ricardo), el único con leído / favoritos / notas / chat. El rol anónimo solo lee columnas publicadas (grants por columna + RLS), nunca tablas personales |
+| Monetización | **Sin cobros** (ni suscripciones ni pagos): no se monta nada que implique facturar. Para que otros usen la IA sin coste para Ricardo: cada usuario aportará su propia API key de Anthropic (BYOK), que no se guarda en la base de datos |
 | Avisos | **Sin avisos push ni Telegram.** Lo importante se ve en la web: **destacado** (`importance` = 8) en una sección sobre el feed y **trascendental** (`importance` ≥ 9) en un banner fijo hasta marcarlo como leído. Solo cuenta la IA (columna generada `articles.highlight`) |
 | Web: interacción | Leído / favoritos / notas, búsqueda y filtros (tema, fecha, importancia, fuente, CVE), chat con la IA sobre cada noticia y resumen semanal |
 
@@ -29,11 +30,13 @@ Autor: Ricardo (GitHub `yConFi`). Repo: `yConFi/neurosec-radar` (**público**, t
 4. **Web (Next.js)**: banner de trascendentales, sección de destacados, etiqueta **«Acción requerida»** cuando `is_urgent` (con `urgent_reason` como explicación), feed, filtros, detalle de la noticia, notas, favoritos, chat (ruta de API que llama a Claude con el contexto de la noticia), resumen semanal. Row Level Security activado en todas las tablas.
 
 ## Fases
-1. Recolector + procesado + esquema de Supabase (migraciones SQL).
-2. Web: banner de trascendentales + destacados, feed, filtros, leído/favoritos/notas, login.
-3. Chat con la IA + resumen semanal.
+1. Recolector + procesado + esquema de Supabase (migraciones SQL). ✅
+2. Web: banner de trascendentales + destacados, feed, filtros, leído/favoritos/notas, login. ✅
+3. Chat con la IA + resumen semanal. ✅
+4. Demo pública de solo lectura. ✅
+5. IA con la API key propia del visitante (BYOK).
 
-(La antigua fase de Telegram se descartó el 2026-09-23.)
+(La antigua fase de Telegram se descartó el 2026-09-23. Demo pública y «sin cobros, BYOK» decididos el 2026-09-28.)
 Extra: README cuidado para el portfolio (arquitectura, capturas, decisiones de seguridad).
 
 ## Lo que prepara Ricardo

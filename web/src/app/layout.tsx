@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "NeuroSec Radar",
   description: "Radar personal de noticias de IA, ciberseguridad e IA × ciberseguridad",
-  // Private single-user app: keep it out of search engines.
+  // Public demo of a personal app built on third-party news: keep it out of search engines.
   robots: { index: false, follow: false },
 }
 

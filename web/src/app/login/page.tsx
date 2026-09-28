@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { LoginForm } from "./login-form"
 
 export const metadata = { title: "Entrar · NeuroSec Radar" }
@@ -10,6 +12,11 @@ export default function LoginPage() {
           <span className="text-red-600">●</span> NeuroSec Radar
         </h1>
         <LoginForm />
+        <p className="text-center text-sm">
+          <Link href="/" className="text-zinc-500 hover:underline">
+            ← Volver a la demo pública
+          </Link>
+        </p>
       </div>
     </main>
   )
