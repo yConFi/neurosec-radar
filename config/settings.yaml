@@ -21,6 +21,14 @@ ai:
   max_per_batch: 300         # cost guard-rail per run
   max_attempts: 3            # after this, the article stays in status 'failed'
 
+weekly:                      # «Resumen semanal» (same model as ai.model, via the Batch API)
+  ready_hour: 7              # Monday, Europe/Madrid: the week that just ended becomes due
+  min_importance: 6          # news that go into the digest (KEV/NVD records never do)
+  max_articles: 200          # most important first (~130 input tokens each)
+  min_articles: 5            # fewer than this: no digest for that week
+  max_tokens: 8192
+  max_attempts: 3
+
 # Highlights are NOT configured here: they are a generated column in the DB
 # (articles.highlight: importance >= 9 -> 'major', == 8 -> 'top').
 

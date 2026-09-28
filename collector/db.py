@@ -4,7 +4,7 @@ this module must only ever run on the backend (GitHub Actions / local)."""
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Iterable
 
 from supabase import Client, create_client
@@ -180,6 +180,54 @@ class DB:
         for rows in groups.values():
             for chunk in _chunks(rows):
                 self.table("vulnerabilities").upsert(chunk, on_conflict="cve_id", returning="minimal").execute()
+
+    # ------------------------------------------------------ weekly digests
+    def digest_candidates(self, start: datetime, end: datetime, min_importance: int, exclude_sources: list[str]) -> list[dict]:
+        """Processed stories dated in [start, end): by published_at, or by fetched_at when it is
+        unknown (two plain queries instead of one PostgREST `or` over both columns)."""
+        cols = "id,title,source_id,published_at,fetched_at,category,importance,summary_es,cves"
+
+        def query():
+            q = (
+                self.table("articles").select(cols)
+                .eq("status", "done").is_("duplicate_of", "null").gte("importance", min_importance)
+            )
+            return q.not_.in_("source_id", exclude_sources) if exclude_sources else q
+
+        dated = query().gte("published_at", start.isoformat()).lt("published_at", end.isoformat())
+        undated = query().is_("published_at", "null").gte("fetched_at", start.isoformat()).lt("fetched_at", end.isoformat())
+        return dated.limit(5000).execute().data + undated.limit(5000).execute().data
+
+    def queued_digests(self) -> list[dict]:
+        return self.table("weekly_digests").select("week_start,batch_id,attempts").eq("status", "queued").execute().data
+
+    def get_digest(self, week_start: date) -> dict | None:
+        rows = self.table("weekly_digests").select("status,attempts").eq("week_start", week_start.isoformat()).execute().data
+        return rows[0] if rows else None
+
+    def digest_queued(self, week_start: date, batch_id: str, model: str, article_count: int) -> None:
+        self.table("weekly_digests").upsert(
+            {"week_start": week_start.isoformat(), "status": "queued", "batch_id": batch_id, "model": model,
+             "article_count": article_count, "last_error": None},
+            on_conflict="week_start",
+        ).execute()
+
+    def digest_done(self, week_start: date, content: dict, tokens: dict, now: datetime) -> None:
+        self.table("weekly_digests").update(
+            tokens | {"status": "done", "content": content, "generated_at": now.isoformat(), "last_error": None}
+        ).eq("week_start", week_start.isoformat()).execute()
+
+    def digest_failed(self, week_start: date, error: str, attempts: int, tokens: dict) -> None:
+        self.table("weekly_digests").update(
+            tokens | {"status": "failed", "attempts": attempts, "last_error": error[:1000]}
+        ).eq("week_start", week_start.isoformat()).execute()
+
+    def digest_empty(self, week_start: date, article_count: int, now: datetime) -> None:
+        self.table("weekly_digests").upsert(
+            {"week_start": week_start.isoformat(), "status": "done", "article_count": article_count,
+             "content": None, "generated_at": now.isoformat()},
+            on_conflict="week_start",
+        ).execute()
 
     # ---------------------------------------------------------------- runs
     def start_run(self, now: datetime) -> int:

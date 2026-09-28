@@ -10,6 +10,7 @@ Order matters:
   5. submit a new AI batch with the pending articles
   6. save source health + HTTP cache headers (only now: if anything above
      failed, the next run re-downloads instead of getting a 304 and losing items)
+  7. weekly digest: collect it / submit it on Monday morning (see weekly.py)
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from typing import Any
 
 import anthropic
 
-from . import ai, grouping, page
+from . import ai, grouping, page, weekly
 from .config import Source, env, load_sources, settings
 from .db import DB
 from .dedup import find_duplicates
@@ -170,6 +171,14 @@ def run(*, dry_run: bool = False, skip_ai: bool = False) -> int:
             else:
                 db.source_ok(sid, res.etag, res.last_modified, now)
         ok = True
+
+        # 7. weekly digest: last, and on its own, so it can never hold back the news
+        if claude:
+            try:
+                stats["weekly"] = weekly.run_step(db, claude, cfg, now, all_sources)
+            except Exception as exc:
+                log.exception("Weekly digest step failed")
+                errors.append({"step": "weekly", "error": repr(exc)[:1000]})
     except Exception as exc:
         log.exception("Run failed")
         errors.append({"step": "run", "error": repr(exc)[:1000]})

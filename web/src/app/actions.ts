@@ -54,6 +54,15 @@ export async function markAllBannerRead(formData: FormData) {
   revalidatePath("/")
 }
 
+export async function clearChat(formData: FormData) {
+  const id = articleId(formData)
+  const { supabase } = await requireUser()
+  // RLS limits the delete to the user's own rows.
+  const { error } = await supabase.from("chat_messages").delete().eq("article_id", id)
+  if (error) throw new Error(error.message)
+  revalidatePath(`/article/${id}`)
+}
+
 export type LoginState = { error: string } | null
 
 export async function signIn(_prev: LoginState, formData: FormData): Promise<LoginState> {
