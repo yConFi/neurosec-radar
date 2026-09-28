@@ -34,6 +34,10 @@ export async function updateSession(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p))
 
   if (!data?.claims && !isPublic) {
+    // fetch() would follow a redirect and get the login page as a 200: answer API calls with 401.
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Sesión caducada. Vuelve a iniciar sesión." }, { status: 401 })
+    }
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     url.search = ""

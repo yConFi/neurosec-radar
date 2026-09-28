@@ -2,10 +2,12 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import { saveNote } from "@/app/actions"
+import { ArticleChat } from "@/components/article-chat"
 import { ActionRequired, CategoryBadge, ImportanceBadge, SubtopicList } from "@/components/badges"
 import { ExternalFigure, ExternalImage } from "@/components/external-image"
 import { Header } from "@/components/header"
 import { FavoriteButton, ReadButton } from "@/components/state-buttons"
+import { MAX_QUESTION_CHARS, MAX_QUESTIONS_PER_ARTICLE, getChatHistory } from "@/lib/chat"
 import { getArticle } from "@/lib/feed"
 import { formatDate, parseFigures, safeUrl } from "@/lib/format"
 import { requireUser } from "@/lib/supabase/server"
@@ -16,7 +18,10 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
   if (!Number.isSafeInteger(id) || id <= 0) notFound()
 
   const { supabase, email } = await requireUser()
-  const result = await getArticle(supabase, id)
+  const [result, chat] = await Promise.all([
+    getArticle(supabase, id),
+    getChatHistory(supabase, id, MAX_QUESTIONS_PER_ARTICLE * 2),
+  ])
   if (!result) notFound()
   const { article: a, vulnerabilities, alsoIn, groupedIn } = result
   const external = safeUrl(a.url)
@@ -171,6 +176,12 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
             </ul>
           </section>
         )}
+
+        <ArticleChat
+          articleId={id}
+          initial={chat.map(({ role, content }) => ({ role, content }))}
+          maxChars={MAX_QUESTION_CHARS}
+        />
 
         <section className="space-y-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500">Mi nota</h2>

@@ -105,6 +105,32 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      chat_messages: {
+        Row: {
+          article_id: number
+          content: string
+          created_at: string
+          id: number
+          input_tokens: number | null
+          model: string | null
+          output_tokens: number | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          article_id: number
+          content: string
+          created_at?: string
+          id?: never
+          input_tokens?: number | null
+          model?: string | null
+          output_tokens?: number | null
+          role: string
+          user_id?: string
+        }
+        Update: never
+        Relationships: []
+      }
       collector_runs: {
         Row: {
           errors: Json
@@ -163,6 +189,26 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      weekly_digests: {
+        Row: {
+          article_count: number
+          attempts: number
+          batch_id: string | null
+          content: Json | null
+          created_at: string
+          generated_at: string | null
+          input_tokens: number | null
+          last_error: string | null
+          model: string | null
+          output_tokens: number | null
+          status: string
+          updated_at: string
+          week_start: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       feed: {
@@ -209,3 +255,5 @@ export type Database = {
 
 export type FeedRow = Database["public"]["Views"]["feed"]["Row"]
 export type Vulnerability = Database["public"]["Tables"]["vulnerabilities"]["Row"]
+export type ChatMessage = Database["public"]["Tables"]["chat_messages"]["Row"]
+export type WeeklyDigestRow = Database["public"]["Tables"]["weekly_digests"]["Row"]
