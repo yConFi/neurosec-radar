@@ -6,7 +6,15 @@
 
 NeuroSec Radar pulls news from 30 sources (security and AI outlets in English and Spanish, arXiv, CISA KEV and NVD), removes duplicates, and has **Claude Haiku 4.5** classify every item, score its importance from 1 to 10, write a summary in Spanish, and decide whether it calls for action. The web app surfaces what matters: a pinned banner for must-know stories, a highlights section, a filterable feed, an AI chat about any article and an automatic weekly digest.
 
-<!-- Screenshots: to be added in docs/screenshots/ -->
+![Home: pinned banner of must-know stories with «Acción requerida»](docs/screenshots/home.png)
+
+| Article detail | CVE facts and key points |
+|---|---|
+| ![Article detail with the action to take](docs/screenshots/article.png) | ![Detailed analysis, key points and CVE data from NVD and CISA KEV](docs/screenshots/article-cve.png) |
+| **Chat with Claude about the article** (owner only) | **Weekly digest** |
+| ![Streaming chat about an article](docs/screenshots/chat.png) | ![Weekly digest with overview and top stories](docs/screenshots/weekly.png) |
+
+*The interface is in Spanish, the language of the summaries.*
 
 ## Features
 

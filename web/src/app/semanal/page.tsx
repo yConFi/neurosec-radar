@@ -10,7 +10,7 @@ import { type DigestArticle, getDigest, listDigests, weekLabel } from "@/lib/wee
 function ArticleLink({ article }: { article: DigestArticle | undefined }) {
   if (!article) return null
   return (
-    <Link href={`/article/${article.id}`} className={`hover:underline ${article.read_at ? "text-zinc-500" : ""}`}>
+    <Link href={`/article/${article.id}`} className={`min-w-0 hover:underline ${article.read_at ? "text-zinc-500" : ""}`}>
       {article.title}
     </Link>
   )
@@ -111,7 +111,7 @@ function WeeklyDigest({ result }: { result: NonNullable<Awaited<ReturnType<typeo
                 <li key={t.id} className="flex gap-3 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                   <span className="font-mono text-sm font-bold text-zinc-400">{i + 1}</span>
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    <div className="flex items-start gap-2 text-sm font-semibold">
                       <ImportanceBadge importance={a?.importance ?? null} />
                       <ArticleLink article={a} />
                     </div>
