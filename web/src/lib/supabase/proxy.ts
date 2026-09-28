@@ -3,11 +3,9 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import type { Database } from "@/lib/database.types"
 
-const PUBLIC_PATHS = ["/login"]
-
 // Official pattern: refreshes the auth token on every request and keeps
-// browser + server cookies in sync. Redirecting here is only an optimistic
-// check; pages call requireUser() and RLS enforces access.
+// browser + server cookies in sync. Pages are public (read-only demo): they call
+// getViewer() and RLS decides what each role reads. Only the API needs a session.
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request })
 
@@ -31,17 +29,9 @@ export async function updateSession(request: NextRequest) {
 
   // Do not run code between createServerClient and getClaims().
   const { data } = await supabase.auth.getClaims()
-  const isPublic = PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p))
-
-  if (!data?.claims && !isPublic) {
-    // fetch() would follow a redirect and get the login page as a 200: answer API calls with 401.
-    if (request.nextUrl.pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Sesión caducada. Vuelve a iniciar sesión." }, { status: 401 })
-    }
-    const url = request.nextUrl.clone()
-    url.pathname = "/login"
-    url.search = ""
-    return NextResponse.redirect(url)
+  // fetch() would follow a redirect and get a page as a 200: answer API calls with 401.
+  if (!data?.claims && request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Sesión caducada. Vuelve a iniciar sesión." }, { status: 401 })
   }
 
   return response

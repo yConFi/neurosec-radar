@@ -246,6 +246,38 @@ export type Database = {
         }
         Relationships: []
       }
+      public_feed: {
+        Row: {
+          category: string | null
+          cves: string[] | null
+          detail_es: string | null
+          duplicate_of: number | null
+          external_id: string | null
+          extra: Json | null
+          fetched_at: string | null
+          figures: Json | null
+          highlight: string | null
+          id: number | null
+          image_url: string | null
+          importance: number | null
+          is_curious: boolean | null
+          is_urgent: boolean | null
+          key_points: string[] | null
+          lang: string | null
+          published_at: string | null
+          search: unknown
+          sort_at: string | null
+          source_id: string | null
+          source_kind: string | null
+          source_name: string | null
+          subtopics: string[] | null
+          summary_es: string | null
+          title: string | null
+          urgent_reason: string | null
+          url: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: { [_ in never]: never }
     Enums: { [_ in never]: never }

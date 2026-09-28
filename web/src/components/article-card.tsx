@@ -6,7 +6,8 @@ import { FavoriteButton, ReadButton } from "@/components/state-buttons"
 import type { Card } from "@/lib/feed"
 import { safeUrl, timeAgo } from "@/lib/format"
 
-export function ArticleCard({ item, compact = false }: { item: Card; compact?: boolean }) {
+// `owner`: the signed-in owner gets favourite / read buttons; a public visitor only reads.
+export function ArticleCard({ item, compact = false, owner }: { item: Card; compact?: boolean; owner: boolean }) {
   const id = item.id!
   const read = Boolean(item.read_at)
   const external = safeUrl(item.url)
@@ -79,8 +80,12 @@ export function ArticleCard({ item, compact = false }: { item: Card; compact?: b
               Fuente ↗
             </a>
           )}
-          <FavoriteButton id={id} favorite={Boolean(item.favorite)} />
-          <ReadButton id={id} read={read} />
+          {owner && (
+            <>
+              <FavoriteButton id={id} favorite={Boolean(item.favorite)} />
+              <ReadButton id={id} read={read} />
+            </>
+          )}
         </div>
       </div>
     </article>

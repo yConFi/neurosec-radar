@@ -80,5 +80,5 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
-  redirect("/login")
+  redirect("/") // back to the public demo
 }

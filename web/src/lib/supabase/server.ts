@@ -31,6 +31,18 @@ export async function createClient() {
 }
 
 /**
+ * Supabase client + the signed-in user, or `user: null` for a public visitor (read-only demo:
+ * the anon role only reads published data, see *_public_read_only_demo.sql).
+ * Signed in means the owner: sign-ups are closed, and RLS still decides what a session can read.
+ */
+export async function getViewer() {
+  const supabase = await createClient()
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims ? { id: data.claims.sub as string, email: data.claims.email as string | undefined } : null
+  return { supabase, user }
+}
+
+/**
  * Supabase client for a verified user, or redirect to /login.
  * getClaims() validates the JWT signature (never trust getSession() on the server).
  * The real authorisation is RLS: a valid but non-owner user still reads nothing.

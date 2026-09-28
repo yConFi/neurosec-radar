@@ -7,9 +7,18 @@ import type { Database, FeedRow } from "@/lib/database.types"
 type Client = SupabaseClient<Database>
 
 export const PAGE_SIZE = 30
-const CARD_COLUMNS =
+const PUBLIC_CARD_COLUMNS =
   "id,url,title,sort_at,source_id,source_name,category,subtopics,importance,highlight," +
-  "is_curious,summary_es,cves,is_urgent,urgent_reason,read_at,favorite,note,image_url"
+  "is_curious,summary_es,cves,is_urgent,urgent_reason,image_url"
+const cardColumns = (owner: boolean) => (owner ? `${PUBLIC_CARD_COLUMNS},read_at,favorite,note` : PUBLIC_CARD_COLUMNS)
+
+/**
+ * The owner reads `feed` (with their read / favourite / note); a public visitor reads
+ * `public_feed`, the same columns minus those three (the anon role has no access to `feed`).
+ * The cast keeps one query builder type: only select per-user columns when `owner`.
+ */
+const view = (supabase: Client, owner: boolean) =>
+  owner ? supabase.from("feed") : supabase.from("public_feed" as "feed")
 
 export const PERIODS = {
   "24h": { label: "Últimas 24 h", hours: 24 },
@@ -32,8 +41,8 @@ export type Filters = {
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.trim() ?? ""
 
-/** Parse and whitelist URL search params (they are user input). */
-export function parseFilters(sp: Record<string, string | string[] | undefined>): Filters {
+/** Parse and whitelist URL search params (they are user input). `estado` is owner-only. */
+export function parseFilters(sp: Record<string, string | string[] | undefined>, owner = true): Filters {
   const cat = one(sp.cat)
   const period = one(sp.period)
   const estado = one(sp.estado)
@@ -47,7 +56,7 @@ export function parseFilters(sp: Record<string, string | string[] | undefined>):
     src: /^[a-z0-9][a-z0-9_-]*$/.test(one(sp.src)) ? one(sp.src) : "",
     cve: /^CVE-\d{4}-\d{4,}$/.test(cve) ? cve : "",
     period: period in PERIODS ? (period as Filters["period"]) : "all",
-    estado: estado === "unread" || estado === "fav" ? estado : "",
+    estado: owner && (estado === "unread" || estado === "fav") ? estado : "",
     page: Number.isFinite(page) && page > 0 ? page : 0,
   }
 }
@@ -64,28 +73,29 @@ export type Card = Pick<
   FeedRow,
   | "id" | "url" | "title" | "sort_at" | "source_id" | "source_name" | "category" | "subtopics"
   | "importance" | "highlight" | "is_curious" | "summary_es" | "cves" | "is_urgent"
-  | "urgent_reason" | "read_at" | "favorite" | "note" | "image_url"
->
+  | "urgent_reason" | "image_url"
+> &
+  Partial<Pick<FeedRow, "read_at" | "favorite" | "note">> // owner only
 
-/** Transcendental items stay pinned until marked as read. */
-export async function getBanner(supabase: Client) {
-  const { data, error, count } = await supabase
-    .from("feed")
-    .select(CARD_COLUMNS, { count: "exact" })
+/**
+ * Transcendental items. The owner's stay pinned until marked as read; a visitor has no read
+ * state, so they see the ones from the last 48 h.
+ */
+export async function getBanner(supabase: Client, owner: boolean) {
+  let query = view(supabase, owner)
+    .select(cardColumns(owner), { count: "exact" })
     .eq("highlight", "major")
     .is("duplicate_of", null)
-    .is("read_at", null)
-    .order("sort_at", { ascending: false })
-    .limit(5)
+  query = owner ? query.is("read_at", null) : query.gte("sort_at", hoursAgo(48))
+  const { data, error, count } = await query.order("sort_at", { ascending: false }).limit(5)
   if (error) throw error
   return { items: (data ?? []) as unknown as Card[], total: count ?? 0 }
 }
 
 /** Highlights (importance 8) from the last 48 h, read or not. */
-export async function getHighlights(supabase: Client) {
-  const { data, error } = await supabase
-    .from("feed")
-    .select(CARD_COLUMNS)
+export async function getHighlights(supabase: Client, owner: boolean) {
+  const { data, error } = await view(supabase, owner)
+    .select(cardColumns(owner))
     .eq("highlight", "top")
     .is("duplicate_of", null)
     .gte("sort_at", hoursAgo(48))
@@ -95,9 +105,9 @@ export async function getHighlights(supabase: Client) {
   return (data ?? []) as unknown as Card[]
 }
 
-export async function getFeed(supabase: Client, f: Filters) {
+export async function getFeed(supabase: Client, f: Filters, owner: boolean) {
   // Same story from several sources (grouped by CVE): only its primary is listed.
-  let query = supabase.from("feed").select(CARD_COLUMNS, { count: "exact" }).is("duplicate_of", null)
+  let query = view(supabase, owner).select(cardColumns(owner), { count: "exact" }).is("duplicate_of", null)
 
   if (f.q) query = query.textSearch("search", f.q, { type: "websearch", config: "simple" })
   if (f.cat) query = query.eq("category", f.cat)
@@ -106,8 +116,8 @@ export async function getFeed(supabase: Client, f: Filters) {
   if (f.cve) query = query.contains("cves", [f.cve])
   const hours = PERIODS[f.period].hours
   if (hours) query = query.gte("sort_at", hoursAgo(hours))
-  if (f.estado === "unread") query = query.is("read_at", null)
-  if (f.estado === "fav") query = query.eq("favorite", true)
+  if (owner && f.estado === "unread") query = query.is("read_at", null)
+  if (owner && f.estado === "fav") query = query.eq("favorite", true)
 
   const from = f.page * PAGE_SIZE
   const { data, error, count } = await query
@@ -124,8 +134,8 @@ export async function getSources(supabase: Client) {
   return data ?? []
 }
 
-export async function getArticle(supabase: Client, id: number) {
-  const { data, error } = await supabase.from("feed").select("*").eq("id", id).maybeSingle()
+export async function getArticle(supabase: Client, id: number, owner: boolean) {
+  const { data, error } = await view(supabase, owner).select("*").eq("id", id).maybeSingle()
   if (error) throw error
   if (!data) return null
 

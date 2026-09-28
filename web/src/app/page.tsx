@@ -7,17 +7,18 @@ import { FiltersForm } from "@/components/filters"
 import { Header } from "@/components/header"
 import { PAGE_SIZE, getBanner, getFeed, getHighlights, getSources, hasActiveFilters, parseFilters } from "@/lib/feed"
 import { safeUrl, timeAgo } from "@/lib/format"
-import { requireUser } from "@/lib/supabase/server"
+import { getViewer } from "@/lib/supabase/server"
 
 export default async function Home({ searchParams }: PageProps<"/">) {
-  const { supabase, email } = await requireUser()
-  const filters = parseFilters(await searchParams)
+  const { supabase, user } = await getViewer()
+  const owner = Boolean(user)
+  const filters = parseFilters(await searchParams, owner)
   const filtering = hasActiveFilters(filters)
 
   const [banner, highlights, feed, sources] = await Promise.all([
-    getBanner(supabase),
-    filtering ? Promise.resolve([]) : getHighlights(supabase),
-    getFeed(supabase, filters),
+    getBanner(supabase, owner),
+    filtering ? Promise.resolve([]) : getHighlights(supabase, owner),
+    getFeed(supabase, filters, owner),
     getSources(supabase),
   ])
 
@@ -32,7 +33,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
   return (
     <>
-      <Header email={email} />
+      <Header email={user?.email} signedIn={owner} />
       <main className="mx-auto max-w-5xl space-y-8 px-4 py-6">
         {banner.items.length > 0 && (
           <section
@@ -41,14 +42,16 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           >
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-bold uppercase tracking-wide text-red-700 dark:text-red-300">
-                ● Trascendental {banner.total > banner.items.length && `(${banner.total})`}
+                ● Trascendental {owner ? banner.total > banner.items.length && `(${banner.total})` : "· últimas 48 h"}
               </h2>
-              <form action={markAllBannerRead} className="ml-auto">
-                <input type="hidden" name="ids" value={banner.items.map((i) => i.id).join(",")} />
-                <button type="submit" className="text-xs text-red-700 hover:underline dark:text-red-300">
-                  Marcar todo como leído
-                </button>
-              </form>
+              {owner && (
+                <form action={markAllBannerRead} className="ml-auto">
+                  <input type="hidden" name="ids" value={banner.items.map((i) => i.id).join(",")} />
+                  <button type="submit" className="text-xs text-red-700 hover:underline dark:text-red-300">
+                    Marcar todo como leído
+                  </button>
+                </form>
+              )}
             </div>
             <ul className="mt-3 space-y-3">
               {banner.items.map((item) => (
@@ -74,16 +77,18 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       )}
                     </div>
                   </div>
-                  <form action={setRead}>
-                    <input type="hidden" name="id" value={item.id!} />
-                    <input type="hidden" name="read" value="1" />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-red-600/40 px-2 py-1 text-xs text-red-700 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900/40"
-                    >
-                      Leído
-                    </button>
-                  </form>
+                  {owner && (
+                    <form action={setRead}>
+                      <input type="hidden" name="id" value={item.id!} />
+                      <input type="hidden" name="read" value="1" />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-red-600/40 px-2 py-1 text-xs text-red-700 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900/40"
+                      >
+                        Leído
+                      </button>
+                    </form>
+                  )}
                 </li>
               ))}
             </ul>
@@ -97,7 +102,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               {highlights.map((item) => (
-                <ArticleCard key={item.id} item={item} compact />
+                <ArticleCard key={item.id} item={item} compact owner={owner} />
               ))}
             </div>
           </section>
@@ -110,13 +115,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             </h2>
             <span className="text-xs text-zinc-500">{feed.total} noticias</span>
           </div>
-          <FiltersForm filters={filters} sources={sources} />
+          <FiltersForm filters={filters} sources={sources} owner={owner} />
           {feed.items.length === 0 ? (
             <p className="py-12 text-center text-sm text-zinc-500">No hay noticias con estos filtros.</p>
           ) : (
             <div className="space-y-3">
               {feed.items.map((item) => (
-                <ArticleCard key={item.id} item={item} />
+                <ArticleCard key={item.id} item={item} owner={owner} />
               ))}
             </div>
           )}

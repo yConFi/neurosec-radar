@@ -14,7 +14,7 @@ export type Digest = {
   trends: string[]
 }
 
-export type DigestArticle = { id: number; title: string; source_name: string | null; importance: number | null; read_at: string | null }
+export type DigestArticle = { id: number; title: string; source_name: string | null; importance: number | null; read_at?: string | null }
 
 const isStr = (v: unknown): v is string => typeof v === "string"
 const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0
@@ -56,7 +56,7 @@ export async function listDigests(supabase: Client) {
   return data ?? []
 }
 
-export async function getDigest(supabase: Client, weekStart: string) {
+export async function getDigest(supabase: Client, weekStart: string, owner: boolean) {
   const { data, error } = await supabase
     .from("weekly_digests")
     .select("week_start,status,article_count,content,generated_at,model")
@@ -71,7 +71,10 @@ export async function getDigest(supabase: Client, weekStart: string) {
     : []
   let articles = new Map<number, DigestArticle>()
   if (ids.length) {
-    const res = await supabase.from("feed").select("id,title,source_name,importance,read_at").in("id", ids)
+    // Owner: `feed` (with read state); public visitor: `public_feed` (same columns minus per-user ones).
+    const res = owner
+      ? await supabase.from("feed").select("id,title,source_name,importance,read_at").in("id", ids)
+      : await supabase.from("public_feed").select("id,title,source_name,importance").in("id", ids)
     if (res.error) throw res.error
     articles = new Map((res.data ?? []).map((a) => [a.id!, a as DigestArticle]))
   }
