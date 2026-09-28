@@ -6,6 +6,16 @@ import { clearChat } from "@/app/actions"
 
 type Message = { role: "user" | "assistant"; content: string }
 
+// The model sometimes uses Markdown bold despite the prompt. Render **text** as <strong>
+// through React (escaped text nodes, never HTML); everything else stays literal.
+function WithBold({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part))}
+    </>
+  )
+}
+
 const SUGGESTIONS = ["¿Me afecta y qué debería hacer?", "Explícamelo en términos técnicos", "¿Qué contexto hay detrás?"]
 
 // Answers are shown as plain text (whitespace-pre-wrap), never as HTML: the model's output is
@@ -94,7 +104,7 @@ export function ArticleChat({ articleId, initial, maxChars }: { articleId: numbe
                     : "whitespace-pre-wrap text-sm leading-relaxed text-zinc-800 dark:text-zinc-200"
                 }
               >
-                {m.content || (streaming && i === messages.length - 1 ? "…" : "")}
+                {m.content ? <WithBold text={m.content} /> : streaming && i === messages.length - 1 ? "…" : ""}
               </p>
             </div>
           ))}
