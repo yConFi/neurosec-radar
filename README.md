@@ -126,6 +126,10 @@ tests/                pytest suite (collector logic, AI output validation, weekl
 
 </details>
 
+## License
+
+Code under the [MIT License](LICENSE). News content belongs to its original sources; the app stores summaries and links to them.
+
 ---
 
 Built by Ricardo ([@yConFi](https://github.com/yConFi)), developed together with [Claude Code](https://claude.com/claude-code).
