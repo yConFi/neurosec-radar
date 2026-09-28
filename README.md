@@ -24,10 +24,10 @@ NeuroSec Radar pulls news from 30 sources (security and AI outlets in English an
 - **What matters first.** Importance ≥ 9 goes to a pinned banner, 8 to a highlights section. Only the AI's score counts.
 - **«Acción requerida».** Shown only when there is something concrete to do: a specific, widely deployed product, evidence of exploitation (or a CISA KEV listing), and a real fix or mitigation. The model reports those facts; the decision is made in code.
 - **One story, many sources.** Near-duplicate titles are merged, and articles about the same CVE are grouped under one entry («También en»).
-- **Chat about any article** (owner only), streamed from Claude with the article as context.
+- **Chat about any article**, streamed from Claude with the article as context. The owner uses the app's key and the history is saved; **visitors bring their own Anthropic API key** (BYOK), and their browser calls Anthropic directly.
 - **Weekly digest**: headline, overview, top stories, per-topic sections and trends, generated every Monday.
 - **Search and filters** by text, topic, date, importance, source and CVE.
-- **Public read-only demo**; read state, favourites, notes and chat are private to the owner.
+- **Public read-only demo**; read state, favourites, notes and saved chats are private to the owner.
 
 ## Architecture
 
@@ -78,10 +78,14 @@ This is a public repository and a public site built on untrusted content (it col
 **Untrusted content and the LLM**
 - Article text goes to the model HTML-escaped inside tags, with instructions to treat it as data. The model has no tools, and its output is constrained by a JSON schema, then re-validated and clamped (Pydantic).
 - Decisions with consequences don't depend on free text from the model. «Acción requerida» is computed from reported facts, remediation verbs are checked, and CISA KEV overrides the model's reading of exploitation. Every article id the weekly digest cites is checked against its input.
-- Chat answers render as plain text, never HTML. External URLs from feeds are limited to `http(s)`, images to `https`, and they load with `no-referrer`.
+- Chat answers render as plain text (only `**bold**` is turned into React elements), never HTML. External URLs from feeds are limited to `http(s)`, images to `https`, and they load with `no-referrer`.
+
+**Visitors' own API keys (BYOK)**
+- The visitor's key never reaches this app's server, logs or database. It stays in their browser (in `sessionStorage` by default, in `localStorage` only if they tick "remember"), and the browser sends it only to `api.anthropic.com`, using the official SDK in browser mode. The server only hands the browser the article's *public* context.
+- Their conversations aren't stored anywhere, so the app holds no personal data from visitors. The site renders no raw HTML (no `dangerouslySetInnerHTML`), which limits XSS exposure of a key kept in the browser.
 
 **Web**
-- The chat API requires a session, accepts same-origin JSON only and has cost guard-rails: 2,000-character questions, 30 per article and 100 per 24 h. `ANTHROPIC_API_KEY` is a server-only env var.
+- The owner's chat API requires a session, accepts same-origin JSON only and has cost guard-rails: 2,000-character questions, 30 per article and 100 per 24 h. `ANTHROPIC_API_KEY` is a server-only env var.
 - Server Actions validate every input. Security headers are set (HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`), and the site is marked `noindex`.
 
 **Supply chain and secrets**
