@@ -7,7 +7,7 @@ import { ActionRequired, CategoryBadge, ImportanceBadge, SubtopicList } from "@/
 import { ExternalFigure, ExternalImage } from "@/components/external-image"
 import { Header } from "@/components/header"
 import { FavoriteButton, ReadButton } from "@/components/state-buttons"
-import { MAX_QUESTION_CHARS, MAX_QUESTIONS_PER_ARTICLE, getChatHistory } from "@/lib/chat"
+import { MAX_QUESTION_CHARS, MAX_QUESTIONS_PER_ARTICLE, getChatContext, getChatHistory } from "@/lib/chat"
 import { getArticle } from "@/lib/feed"
 import { formatDate, parseFigures, safeUrl } from "@/lib/format"
 import { getViewer } from "@/lib/supabase/server"
@@ -19,10 +19,12 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
 
   const { supabase, user } = await getViewer()
   const owner = Boolean(user)
-  // Chat and notes are owner-only: a public visitor never queries them.
-  const [result, chat] = await Promise.all([
+  // Owner: saved chat + notes. Visitor: BYOK chat, which needs the article's public context
+  // (sent to their browser, which calls Anthropic with their own key).
+  const [result, chat, visitorChat] = await Promise.all([
     getArticle(supabase, id, owner),
     owner ? getChatHistory(supabase, id, MAX_QUESTIONS_PER_ARTICLE * 2) : Promise.resolve([]),
+    owner ? Promise.resolve(null) : getChatContext(supabase, id, false),
   ])
   if (!result) notFound()
   const { article: a, vulnerabilities, alsoIn, groupedIn } = result
@@ -181,6 +183,10 @@ export default async function ArticlePage({ params }: PageProps<"/article/[id]">
               ))}
             </ul>
           </section>
+        )}
+
+        {!owner && visitorChat && (
+          <ArticleChat articleId={id} initial={[]} maxChars={MAX_QUESTION_CHARS} byok={{ system: visitorChat.system }} />
         )}
 
         {owner && (

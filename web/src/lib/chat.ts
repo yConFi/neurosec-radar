@@ -2,16 +2,14 @@ import "server-only"
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import { HISTORY_MESSAGES } from "@/lib/chat-config"
 import type { Database } from "@/lib/database.types"
 import { CATEGORY_LABEL } from "@/lib/format"
 
+export { CHAT_MODEL, MAX_ANSWER_TOKENS, MAX_QUESTION_CHARS } from "@/lib/chat-config"
+
 type Client = SupabaseClient<Database>
 
-// Same model as the collector (CLAUDE.md: Claude Haiku 4.5). No batch here: the answer is live.
-export const CHAT_MODEL = "claude-haiku-4-5"
-export const MAX_ANSWER_TOKENS = 1500
-export const MAX_QUESTION_CHARS = 2000
-const HISTORY_MESSAGES = 20 // last N turns sent back to the model (older ones stay in the DB)
 // Cost guard-rails, also against a stolen session: questions per article and per 24 h.
 export const MAX_QUESTIONS_PER_ARTICLE = 30
 export const MAX_QUESTIONS_PER_DAY = 100
@@ -44,10 +42,14 @@ const esc = (s: unknown) =>
 
 export type ChatContext = { system: string; title: string }
 
-/** The article as the model sees it, or null when RLS hides it (not the owner / not found). */
-export async function getChatContext(supabase: Client, id: number): Promise<ChatContext | null> {
+/**
+ * The article as the model sees it, or null when RLS hides it / it doesn't exist.
+ * `owner: false` builds it for a public visitor (BYOK chat, sent to their browser): only
+ * published columns, so no feed excerpt (the anon role can't read articles.content).
+ */
+export async function getChatContext(supabase: Client, id: number, owner = true): Promise<ChatContext | null> {
   const { data: a, error } = await supabase
-    .from("feed")
+    .from(owner ? "feed" : ("public_feed" as "feed"))
     .select("id,url,title,sort_at,source_name,category,importance,summary_es,detail_es,key_points,cves,is_urgent,urgent_reason")
     .eq("id", id)
     .maybeSingle()
@@ -57,7 +59,7 @@ export async function getChatContext(supabase: Client, id: number): Promise<Chat
   const cves = a.cves ?? []
   const [raw, vulns] = await Promise.all([
     // The feed snippet (or arXiv abstract) the collector kept; the full page text is not stored.
-    supabase.from("articles").select("content").eq("id", id).maybeSingle(),
+    owner ? supabase.from("articles").select("content").eq("id", id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     cves.length
       ? supabase
           .from("vulnerabilities")

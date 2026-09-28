@@ -34,7 +34,7 @@ Autor: Ricardo (GitHub `yConFi`). Repo: `yConFi/neurosec-radar` (**público**, t
 2. Web: banner de trascendentales + destacados, feed, filtros, leído/favoritos/notas, login. ✅
 3. Chat con la IA + resumen semanal. ✅
 4. Demo pública de solo lectura. ✅
-5. IA con la API key propia del visitante (BYOK).
+5. IA con la API key propia del visitante (BYOK): chat en el detalle, del navegador a Anthropic; la key en sessionStorage (o localStorage con «Recordar»); conversaciones sin guardar. ✅
 
 (La antigua fase de Telegram se descartó el 2026-09-23. Demo pública y «sin cobros, BYOK» decididos el 2026-09-28.)
 Extra: README cuidado para el portfolio (arquitectura, capturas, decisiones de seguridad).
