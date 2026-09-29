@@ -30,8 +30,12 @@ def fetch_feed(client: httpx.Client, source: Source, state: dict[str, Any]):
     return feed, result
 
 
-def _entry_date(entry) -> datetime | None:
-    return struct_time_to_dt(entry.get("published_parsed") or entry.get("updated_parsed"))
+def _entry_date(entry, now: datetime) -> datetime | None:
+    """Publication date, never later than `now` (when we fetched it). Some feeds date an item in
+    the future: Dark Reading dates event announcements with the event day (months ahead), and
+    OpenAI / INCIBE-CERT were seen hours ahead. Such an item would sit on top of the feed."""
+    published = struct_time_to_dt(entry.get("published_parsed") or entry.get("updated_parsed"))
+    return min(published, now) if published else None
 
 
 def _entry_text(entry) -> str:
@@ -64,13 +68,13 @@ def fetch_rss(client: httpx.Client, source: Source, state: dict[str, Any], cfg: 
     c = cfg["collector"]
     cutoff = now - timedelta(days=c["max_age_days"])
     # Some feeds (e.g. OpenAI) list their whole archive: newest first, then cap.
-    entries = sorted(feed.entries, key=lambda e: _entry_date(e) or now, reverse=True)
+    entries = sorted(feed.entries, key=lambda e: _entry_date(e, now) or now, reverse=True)
     too_old = 0
     for entry in entries[: c["max_items_per_source"]]:
         link, title = entry.get("link"), html_to_text(entry.get("title"))
         if not link or not title:
             continue
-        published = _entry_date(entry)
+        published = _entry_date(entry, now)
         if published and published < cutoff:
             too_old += 1
             continue
@@ -134,7 +138,7 @@ def fetch_arxiv(client: httpx.Client, source: Source, state: dict[str, Any], cfg
                 lang=source.lang,
                 content=truncate(abstract, cfg["collector"]["max_content_chars"]),
                 author=entry.get("author"),
-                published_at=_entry_date(entry),
+                published_at=_entry_date(entry, now),
                 external_id=arxiv_id,
             )
         )
