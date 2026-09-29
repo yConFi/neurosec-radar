@@ -134,3 +134,14 @@ def test_entry_image_prefers_media_and_requires_https():
     assert entry_image(a) == "https://cdn.ex.com/thumb.jpg"  # video skipped
     assert entry_image(b) == "https://ex.com/in-body.png?a=1&b=2"  # http enclosure rejected
     assert entry_image(c) is None
+
+
+def test_fetch_rss_future_dates_become_fetch_time():
+    # Dark Reading dates event announcements with the event day, months ahead.
+    rss = """<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
+<item><title>[Virtual Event] Outlook 2027</title><link>https://ex.com/event</link><pubDate>Thu, 03 Dec 2026 16:00:00 GMT</pubDate></item>
+<item><title>Normal story</title><link>https://ex.com/news</link><pubDate>Wed, 23 Sep 2026 09:00:00 GMT</pubDate></item>
+</channel></rss>"""
+    items = {i.title: i.published_at for i in fetch_rss(_client(rss), _source(), {}, CFG, NOW).items}
+    assert items["[Virtual Event] Outlook 2027"] == NOW
+    assert items["Normal story"] == datetime(2026, 9, 23, 9, tzinfo=UTC)
